@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lucid</string>
+    <string name="accessibility_desc">Enables Lucid to monitor when addictive apps open and introduce a mindful delay screen.</string>
+</resources>
