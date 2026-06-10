@@ -21,6 +21,10 @@ import android.widget.TextView
 class LucidAccessibilityService : AccessibilityService() {
 
 	private var currentApp = ""
+
+	private var lastAllowedApp = ""
+	private var lastAllowedTime = 0L
+
 	private var windowManager: WindowManager? = null
 	private var overlayView: LinearLayout? = null
 	private var warningOverlayView: LinearLayout? = null
@@ -30,7 +34,7 @@ class LucidAccessibilityService : AccessibilityService() {
 	private var isAppSessionActive = false
 
 	// 15 minutes in milliseconds
-	private val WARNING_INTERVAL_MS = 15 * 60 * 1000L
+	private val WARNING_INTERVAL_MS = 2 * 60 * 1000L
 
 	// Target apps to intercept
 	private fun getTargetApps(): Set<String> {
@@ -57,7 +61,6 @@ class LucidAccessibilityService : AccessibilityService() {
 	}
 
 	override fun onAccessibilityEvent(event: AccessibilityEvent) {
-
 		if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
 			return
 
@@ -68,22 +71,31 @@ class LucidAccessibilityService : AccessibilityService() {
 
 		currentApp = openedPackage
 
-		Toast.makeText(
-			this,
-			getTargetApps().toString(),
-			Toast.LENGTH_LONG
-		).show()
+		// Ignore Lucid's own overlays/windows
+		if (currentApp == packageName)
+			return
 
+		// If user left a target app, stop usage tracking
+		if (!getTargetApps().contains(currentApp)) {
+			stopUsageTimer()
+			isAppSessionActive = false
+		}
+
+		// Prevent immediate retrigger after timer finishes
+		if (
+			currentApp == lastAllowedApp &&
+			System.currentTimeMillis() - lastAllowedTime < 3000
+		) {
+			return
+		}
+
+		// Target app detected
 		if (getTargetApps().contains(currentApp)) {
 
-			Toast.makeText(
-				this,
-				"MATCHED: $currentApp",
-				Toast.LENGTH_SHORT
-			).show()
-
 			if (!isLoadingScreenActive) {
+
 				stopUsageTimer()
+
 				showMindfulLoadingScreen()
 			}
 		}
@@ -176,7 +188,12 @@ class LucidAccessibilityService : AccessibilityService() {
 			textSize = 15f
 			setPadding(40, 24, 40, 24)
 			setOnClickListener {
+
+				lastAllowedApp = currentApp
+				lastAllowedTime = System.currentTimeMillis()
+
 				performGlobalAction(GLOBAL_ACTION_HOME)
+
 				removeLoadingScreen()
 			}
 		}
@@ -208,9 +225,13 @@ class LucidAccessibilityService : AccessibilityService() {
 				}
 			}
 			override fun onFinish() {
+				lastAllowedApp = currentApp
+				lastAllowedTime = System.currentTimeMillis()
+
 				removeLoadingScreen()
-				// Start 15-min session usage timer AFTER the delay screen closes
+
 				startUsageTimer()
+
 				isAppSessionActive = true
 			}
 		}.start()
@@ -223,7 +244,9 @@ class LucidAccessibilityService : AccessibilityService() {
 			try { windowManager?.removeView(overlayView) } catch (_: Exception) {}
 			overlayView = null
 		}
-		isLoadingScreenActive = false
+		Handler(Looper.getMainLooper()).postDelayed({
+			isLoadingScreenActive = false
+		}, 3000)
 	}
 
 	// ─── 15-MINUTE USAGE WARNING ──────────────────────────────────────────────
