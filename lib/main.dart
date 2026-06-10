@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:app_usage/app_usage.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+
 
 void main() {
   runApp(const LucidApp());
@@ -44,12 +47,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
 
-  // Background usage checking components
-  Timer? _usageMonitorTimer;
-  Timer? _overlayCountdownTimer;
-  bool _isInterceptionActive = false;
-  int _secondsRemaining = 60;
-  String _activeTargetPackage = "";
 
   // Cooldown registry to prevent instant re-blocking after countdown finishes
   String _recentlyUnlockedApp = "";
@@ -68,6 +65,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void initState() {
+    Future<void> _loadSavedApps() async {
+      final prefs = await SharedPreferences.getInstance();
+
+      final savedApps =
+          prefs.getStringList('enabled_target_apps');
+
+      if (savedApps == null) return;
+
+      setState(() {
+        for (var app in _apps) {
+          app['enabled'] =
+              savedApps.contains(app['package']);
+        }
+      });
+    }
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
@@ -79,14 +91,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     
     // Poll service checks and initiate the reactive background thread loop
     _checkServiceStatus();
-    _startBackgroundUsageMonitor();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _usageMonitorTimer?.cancel();
-    _overlayCountdownTimer?.cancel();
     super.dispose();
   }
 
@@ -122,98 +131,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     Future.delayed(const Duration(seconds: 2), () => _checkServiceStatus());
   }
 
-  void _startBackgroundUsageMonitor() {
-    // Increased duration to 2 seconds to prevent hyper-aggressive OS limits
-    _usageMonitorTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      if (!_serviceEnabled || _isInterceptionActive) return;
-
-      try {
-        DateTime endDate = DateTime.now();
-        // Only look at the last 10 seconds to avoid falsely catching old usage
-        DateTime startDate = endDate.subtract(const Duration(seconds: 10));
-        List<AppUsageInfo> usageStats = await AppUsage().getAppUsage(startDate, endDate);
-
-        for (var info in usageStats) {
-          for (var app in _apps) {
-            if (app['enabled'] == true && info.packageName == app['package']) {
-              
-              // COOLDOWN CHECK: Give the user 15 minutes of peace if they just waited out the timer
-              if (_recentlyUnlockedApp == app['package'] && _unlockTime != null) {
-                if (DateTime.now().difference(_unlockTime!).inMinutes < 15) {
-                  continue; // Skip the block, they are in the cooldown period
-                } else {
-                  // Cooldown expired, reset the locks
-                  _recentlyUnlockedApp = "";
-                  _unlockTime = null;
-                }
-              }
-
-              // Target identified in foreground. Fire the shield!
-              _triggerMindfulInterception(app['package']);
-              return; // Break the loop so it doesn't double-fire
-            }
-          }
-        }
-      } catch (_) {
-        // CRITICAL FIX: If Xiaomi auto-pops the Settings screen or denies permission, 
-        // switch off the engine immediately to DESTROY the infinite loop.
-        if (mounted) {
-          setState(() {
-            _serviceEnabled = false;
-          });
-        }
-      }
-    });
-  }
-
-  void _triggerMindfulInterception(String packagePath) {
+  Future<void> _toggleApp(int index, bool value) async {
     setState(() {
-      _isInterceptionActive = true;
-      _secondsRemaining = 60;
-      _activeTargetPackage = packagePath;
+      _apps[index]['enabled'] = value;
     });
 
-    _overlayCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_secondsRemaining > 1) {
-        setState(() {
-          _secondsRemaining--;
-        });
-      } else {
-        _overlayCountdownTimer?.cancel();
-        
-        setState(() {
-          _isInterceptionActive = false;
-          // Register the cooldown lock so we don't instantly block it again!
-          _recentlyUnlockedApp = _activeTargetPackage;
-          _unlockTime = DateTime.now();
-        });
+    final prefs = await SharedPreferences.getInstance();
 
-        // Countdown safely concluded! Launch deep link target app externally
-        String fallbackUrl = "https://www.google.com";
-        if (_activeTargetPackage.contains("youtube")) fallbackUrl = "https://www.youtube.com";
-        if (_activeTargetPackage.contains("instagram")) fallbackUrl = "https://www.instagram.com";
-        if (_activeTargetPackage.contains("snapchat")) fallbackUrl = "https://www.snapchat.com";
+    final enabledPackages = _apps
+        .where((app) => app['enabled'] == true)
+        .map<String>((app) => app['package'] as String)
+        .toList();
 
-        final Uri destinationUri = Uri.parse(fallbackUrl);
-        if (await canLaunchUrl(destinationUri)) {
-          await launchUrl(destinationUri, mode: LaunchMode.externalApplication);
-        }
-      }
-    });
-  }
-
-  void _abortAndReturnHome() {
-    _overlayCountdownTimer?.cancel();
-    setState(() {
-      _isInterceptionActive = false;
-    });
-    // Fire structural home-button fallback intent via system channels
-    SystemNavigator.pop();
-  }
-
-  void _toggleApp(int index, bool value) {
-    setState(() => _apps[index]['enabled'] = value);
-  }
+    await prefs.setString(
+      'enabled_target_apps',
+      jsonEncode(enabledPackages),
+    );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -340,74 +274,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
-
-          // Core Mindfulness Shield Interception Overlay UI State
-          if (_isInterceptionActive)
-            Container(
-              color: const Color(0xFF0D0D0D),
-              width: double.infinity,
-              height: double.infinity,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        "Pause & Reflect",
-                        style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        "Lucid detected an implicit urge to check social feeds. Let's wait out the clock to regain complete focus control.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: Colors.grey[500], height: 1.5),
-                      ),
-                      const SizedBox(height: 54),
-                      
-                      // Immersive Circular Count Tracker View
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox(
-                            width: 150,
-                            height: 150,
-                            child: CircularProgressIndicator(
-                              value: _secondsRemaining / 60,
-                              strokeWidth: 6,
-                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFBB86FC)),
-                              backgroundColor: const Color(0xFF1C1C2E),
-                            ),
-                          ),
-                          Text(
-                            "${_secondsRemaining}s",
-                            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w300, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 64),
-                      
-                      // Interception Exit/Escape Route Handle Action Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _abortAndReturnHome,
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFE53935), width: 1.5),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text(
-                            "I'll Do Something Better",
-                            style: TextStyle(color: Color(0xFFE53935), fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );

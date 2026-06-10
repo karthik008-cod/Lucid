@@ -11,6 +11,21 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
+        <service
+            android:name=".LucidAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:enabled="true"
+            android:exported="false">
+
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

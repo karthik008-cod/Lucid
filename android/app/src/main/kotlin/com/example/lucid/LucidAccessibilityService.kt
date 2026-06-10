@@ -1,5 +1,6 @@
 package com.example.lucid
 
+import android.util.Log
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.graphics.Color
@@ -9,10 +10,12 @@ import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.widget.Toast
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
 import android.widget.LinearLayout
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.widget.TextView
 
 class LucidAccessibilityService : AccessibilityService() {
@@ -30,41 +33,89 @@ class LucidAccessibilityService : AccessibilityService() {
 	private val WARNING_INTERVAL_MS = 15 * 60 * 1000L
 
 	// Target apps to intercept
-	private val targetApps = setOf(
-		"com.google.android.youtube",
-		"com.instagram.android",
-		"com.snapchat.android",
-		"com.twitter.android",
-		"com.facebook.katana",
-		"com.zhiliaoapp.musically",    // TikTok
-		"com.reddit.frontpage"
-	)
+	private fun getTargetApps(): Set<String> {
+
+		val prefs = getSharedPreferences(
+			"FlutterSharedPreferences",
+			Context.MODE_PRIVATE
+		)
+
+		val json =
+			prefs.getString(
+				"flutter.enabled_target_apps",
+				"[]"
+			) ?: "[]"
+
+		return json
+			.removePrefix("[")
+			.removeSuffix("]")
+			.replace("\"", "")
+			.split(",")
+			.map { it.trim() }
+			.filter { it.isNotEmpty() }
+			.toSet()
+	}
 
 	override fun onAccessibilityEvent(event: AccessibilityEvent) {
-		if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-			val openedPackage = event.packageName?.toString() ?: return
 
-			if (openedPackage == currentApp) return
-			currentApp = openedPackage
+		if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+			return
 
-			if (targetApps.contains(currentApp)) {
-				// User opened a target app
-				if (!isLoadingScreenActive) {
-					stopUsageTimer()
-					showMindfulLoadingScreen()
-				}
-			} else {
-				// User left a target app
-				removeLoadingScreen()
+		val openedPackage = event.packageName?.toString() ?: return
+
+		if (openedPackage == currentApp)
+			return
+
+		currentApp = openedPackage
+
+		Toast.makeText(
+			this,
+			getTargetApps().toString(),
+			Toast.LENGTH_LONG
+		).show()
+
+		if (getTargetApps().contains(currentApp)) {
+
+			Toast.makeText(
+				this,
+				"MATCHED: $currentApp",
+				Toast.LENGTH_SHORT
+			).show()
+
+			if (!isLoadingScreenActive) {
 				stopUsageTimer()
-				isAppSessionActive = false
+				showMindfulLoadingScreen()
 			}
 		}
+	}
+
+	override fun onServiceConnected() {
+		super.onServiceConnected()
+
+		val info = AccessibilityServiceInfo()
+		info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+		info.feedbackType = AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+		info.flags =
+			AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+			AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+
+		serviceInfo = info
+
+		Toast.makeText(
+			this,
+			"LUCID SERVICE CONNECTED",
+			Toast.LENGTH_LONG
+		).show()
 	}
 
 	// ─── LOADING SCREEN (60-second friction wall) ─────────────────────────────
 
 	private fun showMindfulLoadingScreen() {
+		Toast.makeText(
+			this,
+			"TARGET APP DETECTED",
+			Toast.LENGTH_LONG
+		).show()
 		isLoadingScreenActive = true
 		windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -141,7 +192,7 @@ class LucidAccessibilityService : AccessibilityService() {
 			WindowManager.LayoutParams.MATCH_PARENT,
 			WindowManager.LayoutParams.MATCH_PARENT,
 			WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-			WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+			0,
 			PixelFormat.TRANSLUCENT
 		)
 
@@ -188,7 +239,7 @@ class LucidAccessibilityService : AccessibilityService() {
 			override fun onTick(millisUntilFinished: Long) {}
 			override fun onFinish() {
 				// Only show if still in a target app
-				if (targetApps.contains(currentApp)) {
+				if (getTargetApps().contains(currentApp)) {
 					showUsageWarning()
 				}
 			}
