@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.widget.ImageView
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -52,7 +53,7 @@ class LucidAccessibilityService : AccessibilityService() {
     private var audioFocusRequest: AudioFocusRequest? = null
 
     // 30 s for testing — change to 15 * 60 * 1000L for production
-    private val WARNING_INTERVAL_MS = 15 * 60 * 1000L
+    private val WARNING_INTERVAL_MS = 30 * 1000L
 
     // Packages that must NEVER trigger the timer or be treated as "leaving" a target app.
     private val ignoredPackages = mutableSetOf(
@@ -293,14 +294,21 @@ class LucidAccessibilityService : AccessibilityService() {
         }
 
         // ── Central energy orb + arc progress ─────────────────────────────────
-        val orbSizePx = (dp * 240).toInt()
+        val orbSizePx = (dp * 320).toInt()
+        val logoImage = ImageView(this).apply {
+    setImageResource(R.mipmap.ic_launcher)
+    scaleType = ImageView.ScaleType.FIT_CENTER
+}
         var arcProgress = 1f
         var breathScale = 1f
         var energyPulse = 0f
         var shimmerAngle = 0f
         var orbGlow = 0f
 
+        
+
         val orbView = object : View(this) {
+            
             private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
                 strokeWidth = dp * 8
@@ -496,7 +504,27 @@ class LucidAccessibilityService : AccessibilityService() {
         val orbLp = LinearLayout.LayoutParams(orbSizePx, orbSizePx).apply {
             gravity = Gravity.CENTER_HORIZONTAL
         }
-        content.addView(orbView, orbLp)
+        val logoContainer = FrameLayout(this)
+
+logoContainer.addView(
+    orbView,
+    FrameLayout.LayoutParams(
+        orbSizePx,
+        orbSizePx,
+        Gravity.CENTER
+    )
+)
+
+logoContainer.addView(
+    logoImage,
+    FrameLayout.LayoutParams(
+        (dp * 170).toInt(),
+        (dp * 170).toInt(),
+        Gravity.CENTER
+    )
+)
+
+content.addView(logoContainer, orbLp)
 
         // ── Seconds display below orb ─────────────────────────────────────────
         val secondsTv = TextView(this).apply {

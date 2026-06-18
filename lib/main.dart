@@ -163,10 +163,10 @@ class _SplashScreenState extends State<_SplashScreen>
                     builder: (_, __) => Transform.scale(
                       scale: _orb.value,
                       child: Container(
-                        width: 110,
-                        height: 110,
+                        width: 170,
+                        height: 170,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(38),
                           gradient: const RadialGradient(
                             colors: [
                               Color(0xFFE8D5FF),
@@ -188,11 +188,13 @@ class _SplashScreenState extends State<_SplashScreen>
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Text('✦',
-                              style:
-                                  TextStyle(fontSize: 44, color: Colors.white)),
-                        ),
+                        child: ClipRRect(
+  borderRadius: BorderRadius.circular(28),
+  child: Image.asset(
+    'assets/icon.png',
+    fit: BoxFit.cover,
+  ),
+),
                       ),
                     ),
                   ),
@@ -776,6 +778,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+  final List<Map<String, dynamic>> _apps = [];
+  String _searchQuery = "";
   static const _channel =
       MethodChannel('com.example.scroll_stop/accessibility');
 
@@ -783,50 +787,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
 
-  final List<Map<String, dynamic>> _apps = [
-    {
-      'name': 'Instagram',
-      'package': 'com.instagram.android',
-      'icon': '📸',
-      'enabled': true
-    },
-    {
-      'name': 'YouTube',
-      'package': 'com.google.android.youtube',
-      'icon': '▶️',
-      'enabled': true
-    },
-    {
-      'name': 'Snapchat',
-      'package': 'com.snapchat.android',
-      'icon': '👻',
-      'enabled': true
-    },
-    {
-      'name': 'Twitter / X',
-      'package': 'com.twitter.android',
-      'icon': '🐦',
-      'enabled': false
-    },
-    {
-      'name': 'Facebook',
-      'package': 'com.facebook.katana',
-      'icon': '👍',
-      'enabled': false
-    },
-    {
-      'name': 'TikTok',
-      'package': 'com.zhiliaoapp.musically',
-      'icon': '🎵',
-      'enabled': false
-    },
-    {
-      'name': 'Reddit',
-      'package': 'com.reddit.frontpage',
-      'icon': '🤖',
-      'enabled': false
-    },
-  ];
 
   @override
   void initState() {
@@ -910,6 +870,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final enabledCount = _apps.where((a) => a['enabled'] == true).length;
+    final filteredApps = _apps.where((app) {
+
+  final name =
+      app['name']
+          .toString()
+          .toLowerCase();
+
+  return name.contains(
+    _searchQuery.toLowerCase(),
+  );
+
+}).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -986,7 +958,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: _HowItWorksCard(),
               ),
             ),
-
+SliverToBoxAdapter(
+  child: Padding(
+    padding: const EdgeInsets.fromLTRB(
+      24,
+      20,
+      24,
+      16,
+    ),
+    child: Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF17152D),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TextField(
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
+        style: const TextStyle(
+          color: Colors.white,
+        ),
+        decoration: const InputDecoration(
+          hintText: 'Search apps...',
+          hintStyle: TextStyle(
+            color: Colors.white54,
+          ),
+          prefixIcon: Icon(
+            Icons.search,
+            color: Colors.white54,
+          ),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.all(16),
+        ),
+      ),
+    ),
+  ),
+),
             // ── App List Header ───────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
@@ -1019,7 +1028,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final app = _apps[index];
+                  final app = filteredApps[index];
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
                     child: _AppTile(
@@ -1027,11 +1036,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       name: app['name'],
                       package: app['package'],
                       enabled: app['enabled'],
-                      onChanged: (v) => _toggleApp(index, v),
+                      onChanged: (v) {
+
+  final originalIndex = _apps.indexWhere(
+    (a) => a['package'] == app['package'],
+  );
+
+  _toggleApp(originalIndex, v);
+},
                     ),
                   );
                 },
-                childCount: _apps.length,
+                childCount: filteredApps.length,
               ),
             ),
 
@@ -1046,13 +1062,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final apps = await InstalledApps.getInstalledApps();
 
     apps.sort(
-      (a, b) => a.name.compareTo(b.name),
+      (a, b) => a.name.toLowerCase().compareTo(
+            b.name.toLowerCase(),
+          ),
     );
 
     setState(() {
       _apps.clear();
 
       for (var app in apps) {
+        if (
+          app.name.toLowerCase().contains("you") ||
+          app.name.toLowerCase().contains("cam") ||
+          app.name.toLowerCase().contains("calc") ||
+          app.name.toLowerCase().contains("calendar")
+        ) {
+          print("${app.name} --> ${app.packageName}");
+        }
+
+        final package = app.packageName.toLowerCase();
         if (app.packageName == "com.example.lucid") {
           continue;
         }
