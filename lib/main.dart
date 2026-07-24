@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'dart:math';
 import 'package:app_usage/app_usage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:installed_apps/installed_apps.dart';
+import 'dart:ui' as ui;
 
 void main() {
   runApp(const LucidApp());
@@ -18,7 +17,7 @@ class LucidApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Lucid – Mindful Screen Time',
+      title: 'Lucid - Mindful Screen Time',
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0D0D0D),
         colorScheme: const ColorScheme.dark(
@@ -32,7 +31,7 @@ class LucidApp extends StatelessWidget {
   }
 }
 
-// ─── Entry point: decides whether to show onboarding or home ─────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Entry point: decides whether to show onboarding or home Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class _AppEntry extends StatefulWidget {
   const _AppEntry();
@@ -40,23 +39,45 @@ class _AppEntry extends StatefulWidget {
   State<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends State<_AppEntry> {
+class _AppEntryState extends State<_AppEntry> with SingleTickerProviderStateMixin {
   bool _loading = true;
   bool _needsOnboarding = false;
+  late AnimationController _transCtrl;
+  late Animation<double> _transAnim;
 
   @override
   void initState() {
     super.initState();
+    _transCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 850));
+    _transAnim = CurvedAnimation(
+        parent: _transCtrl, curve: Curves.easeInOutCubic);
+    _transCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) setState(() {});
+      }
+    });
     _decide();
+  }
+
+  @override
+  void dispose() {
+    _transCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _decide() async {
     final prefs = await SharedPreferences.getInstance();
     final seen = prefs.getBool('onboarding_done') ?? false;
-    setState(() {
-      _needsOnboarding = !seen;
-      _loading = false;
-    });
+    // Keep loading screen visible for 1.8s so user can admire the second loading screen
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (mounted) {
+      setState(() {
+        _needsOnboarding = !seen;
+        _loading = false;
+      });
+      _transCtrl.forward();
+    }
   }
 
   @override
@@ -64,218 +85,209 @@ class _AppEntryState extends State<_AppEntry> {
     if (_loading) {
       return const _SplashScreen();
     }
-    if (_needsOnboarding) {
-      return OnboardingScreen(
-          onDone: () => setState(() => _needsOnboarding = false));
+
+    final destScreen = _needsOnboarding
+        ? OnboardingScreen(
+            hideHeader: !_transCtrl.isCompleted,
+            onDone: () => setState(() => _needsOnboarding = false))
+        : HomeScreen(hideHeader: !_transCtrl.isCompleted);
+
+    if (_transCtrl.isCompleted) {
+      return destScreen;
     }
-    return const HomeScreen();
+
+    // Reuse the exact same _SplashScreen widget so there's zero jump or 3rd screen!
+    return _SplashScreen(
+      transAnim: _transAnim,
+      destScreen: destScreen,
+      needsOnboarding: _needsOnboarding,
+    );
   }
 }
 
-// ─── Splash / App Loading Screen ─────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Splash / App Loading Screen Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class _SplashScreen extends StatefulWidget {
-  const _SplashScreen();
+  final Animation<double>? transAnim;
+  final Widget? destScreen;
+  final bool needsOnboarding;
+  const _SplashScreen({
+    Key? key,
+    this.transAnim,
+    this.destScreen,
+    this.needsOnboarding = false,
+  }) : super(key: key);
   @override
   State<_SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<_SplashScreen>
-    with TickerProviderStateMixin {
-  late final AnimationController _orbCtrl;
-  late final AnimationController _rotCtrl;
+    with SingleTickerProviderStateMixin {
   late final AnimationController _fadeCtrl;
-  late final Animation<double> _orb;
-  late final Animation<double> _rot;
   late final Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
-    _orbCtrl =
-        AnimationController(vsync: this, duration: const Duration(seconds: 2))
-          ..repeat(reverse: true);
-    _rotCtrl =
-        AnimationController(vsync: this, duration: const Duration(seconds: 8))
-          ..repeat();
     _fadeCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 900))
       ..forward();
-
-    _orb = Tween<double>(begin: 0.8, end: 1.15)
-        .animate(CurvedAnimation(parent: _orbCtrl, curve: Curves.easeInOut));
-    _rot = Tween<double>(begin: 0, end: 2 * 3.14159).animate(_rotCtrl);
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
   }
 
   @override
   void dispose() {
-    _orbCtrl.dispose();
-    _rotCtrl.dispose();
     _fadeCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final transAnim = widget.transAnim;
+    final topPad = MediaQuery.of(context).padding.top;
+    final size = MediaQuery.of(context).size;
+
+    // Pre-compute positions
+    final startLogoSize = 140.0;
+    final startLogoX = (size.width - startLogoSize) / 2;
+    final startLogoY = (size.height - 280.0) / 2;
+    final startTextX = (size.width - 90.0) / 2;
+    final startTextY = startLogoY + startLogoSize + 32.0;
+
+    final endLogoSize = widget.needsOnboarding ? 72.0 : 44.0;
+    final endLogoX = widget.needsOnboarding
+        ? (size.width - endLogoSize) / 2
+        : 24.0;
+    final endLogoY = widget.needsOnboarding ? (topPad + 32.0) : 24.0;
+    final endTextX = widget.needsOnboarding
+        ? (size.width - 240.0) / 2
+        : (24.0 + 44.0 + 14.0);
+    final endTextY = widget.needsOnboarding
+        ? (endLogoY + endLogoSize + 24.0)
+        : (24.0 + 1.0);
+
     return Scaffold(
       backgroundColor: const Color(0xFF03000D),
-      body: Stack(
-        children: [
-          // Deep space radial bg
-          Container(
-            decoration: const BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0, -0.2),
-                radius: 1.2,
-                colors: [
-                  Color(0xFF12003E),
-                  Color(0xFF0A0020),
-                  Color(0xFF03000D)
-                ],
-                stops: [0, 0.5, 1],
-              ),
-            ),
-          ),
+      body: RepaintBoundary(
+        child: AnimatedBuilder(
+        animation: Listenable.merge([
+          _fadeCtrl,
+          if (transAnim != null) transAnim,
+        ]),
+        child: widget.destScreen,
+        builder: (context, destChild) {
+          final tVal = transAnim?.value ?? 0.0;
+          final fadeVal = _fade.value;
 
-          // Orbiting dots
-          AnimatedBuilder(
-            animation: _rot,
-            builder: (_, __) {
-              return CustomPaint(
-                size: Size(MediaQuery.of(context).size.width,
-                    MediaQuery.of(context).size.height),
-                painter: _OrbitPainter(_rot.value),
-              );
-            },
-          ),
+          final logoX = ui.lerpDouble(startLogoX, endLogoX, tVal)!;
+          final logoY = ui.lerpDouble(startLogoY, endLogoY, tVal)!;
+          final logoSize = ui.lerpDouble(startLogoSize, endLogoSize, tVal)!;
+          final radius = ui.lerpDouble(
+              38.0, widget.needsOnboarding ? 20.0 : 12.0, tVal)!;
+          final textX = ui.lerpDouble(startTextX, endTextX, tVal)!;
+          final textY = ui.lerpDouble(startTextY, endTextY, tVal)!;
+          final fontSize = ui.lerpDouble(
+              32.0, widget.needsOnboarding ? 30.0 : 22.0, tVal)!;
+          final bgOpacity = (1.0 - ((tVal - 0.35) / 0.65)).clamp(0.0, 1.0);
 
-          // Center content
-          Center(
-            child: FadeTransition(
-              opacity: _fade,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Breathing glowing orb with logo
-                  AnimatedBuilder(
-                    animation: _orb,
-                    builder: (_, __) => Transform.scale(
-                      scale: _orb.value,
-                      child: Container(
-                        width: 170,
-                        height: 170,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(38),
-                          gradient: const RadialGradient(
-                            colors: [
-                              Color(0xFFE8D5FF),
-                              Color(0xFFBB86FC),
-                              Color(0xFF5A1FC4)
-                            ],
-                            stops: [0, 0.45, 1],
+          return Stack(
+            children: [
+              // Destination screen (rendered directly with ZERO Opacity wrapper to prevent GPU saveLayer jank!)
+              if (destChild != null && tVal > 0.0)
+                destChild,
+
+              // Dark background (fades out during transition to smoothly reveal destChild underneath)
+              if (bgOpacity > 0)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Container(
+                      color: Color.fromRGBO(3, 0, 13, bgOpacity),
+                    ),
+                  ),
+                ),
+
+              // Subtitle + shimmer (only during loading, fades quickly)
+              if (tVal < 0.25) ...[
+                Positioned(
+                  top: startTextY + 38.0 + 8.0,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: (1.0 - (tVal / 0.25)).clamp(0.0, 1.0) * fadeVal,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Mindful Screen Time',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF8877AA),
+                              letterSpacing: 2,
+                            ),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFBB86FC).withOpacity(0.6),
-                              blurRadius: 48,
-                              spreadRadius: 8,
-                            ),
-                            BoxShadow(
-                              color: const Color(0xFF7C4DFF).withOpacity(0.3),
-                              blurRadius: 80,
-                              spreadRadius: 20,
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-  borderRadius: BorderRadius.circular(28),
-  child: Image.asset(
-    'assets/icon.png',
-    fit: BoxFit.cover,
-  ),
-),
+                          const SizedBox(height: 40),
+                          _ShimmerBar(),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  const Text(
-                    'LUCID',
+                ),
+              ],
+
+              // Logo
+              Positioned(
+                left: logoX,
+                top: logoY,
+                child: Opacity(
+                  opacity: fadeVal,
+                  child: Container(
+                    width: logoSize,
+                    height: logoSize,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(radius),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color.fromRGBO(187, 134, 252, 0.5 * (1.0 - tVal * 0.7)),
+                          blurRadius: ui.lerpDouble(40.0, 14.0, tVal)!,
+                          spreadRadius: ui.lerpDouble(6.0, 1.0, tVal)!,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(radius),
+                      child: Image.asset('assets/icon.png', fit: BoxFit.cover),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Text "Lucid"
+              Positioned(
+                left: textX,
+                top: textY,
+                child: Opacity(
+                  opacity: fadeVal,
+                  child: Text(
+                    widget.needsOnboarding && tVal > 0.5
+                        ? 'Welcome to Lucid'
+                        : 'Lucid',
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: fontSize,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
-                      letterSpacing: 10,
+                      letterSpacing: ui.lerpDouble(1.0, 1.2, tVal)!,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Mindful Screen Time',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF8877AA),
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  // Shimmer loading bar
-                  _ShimmerBar(),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
+      ),
       ),
     );
   }
-}
-
-class _OrbitPainter extends CustomPainter {
-  final double angle;
-  _OrbitPainter(this.angle);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final paint = Paint()..style = PaintingStyle.fill;
-
-    // Draw 3 rings of orbiting particles
-    final rings = [
-      (
-        r: size.width * 0.32,
-        count: 8,
-        color: const Color(0x33BB86FC),
-        size: 3.0
-      ),
-      (
-        r: size.width * 0.45,
-        count: 12,
-        color: const Color(0x2203DAC6),
-        size: 2.0
-      ),
-      (
-        r: size.width * 0.55,
-        count: 6,
-        color: const Color(0x447C4DFF),
-        size: 4.0
-      ),
-    ];
-
-    for (final ring in rings) {
-      for (int i = 0; i < ring.count; i++) {
-        final a = angle + (i * 2 * 3.14159 / ring.count);
-        final x = cx + ring.r * cos(a);
-        final y = cy + ring.r * sin(a);
-        final twinkle = (sin(angle * 3 + i) * 0.3 + 0.7).abs();
-        paint.color = ring.color.withOpacity(ring.color.opacity * twinkle);
-        canvas.drawCircle(Offset(x, y), ring.size, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_OrbitPainter old) => old.angle != angle;
 }
 
 class _ShimmerBar extends StatefulWidget {
@@ -334,19 +346,20 @@ class _ShimmerBarState extends State<_ShimmerBar>
   }
 }
 
-// ─── Onboarding Screen (first-launch only) ───────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Onboarding Screen (first-launch only) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onDone;
-  const OnboardingScreen({Key? key, required this.onDone}) : super(key: key);
+  final bool hideHeader;
+  const OnboardingScreen({Key? key, required this.onDone, this.hideHeader = false}) : super(key: key);
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const _channel =
-      MethodChannel('com.example.scroll_stop/accessibility');
+      MethodChannel('com.yuvaan.lucid/accessibility');
 
   late final AnimationController _bgCtrl;
   late final Animation<double> _bgAnim;
@@ -356,36 +369,63 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   bool _accessibilityGranted = false;
   bool _usageGranted = false;
+  int _warningMins = 15;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _bgCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800))
-      ..forward();
+        vsync: this, duration: const Duration(milliseconds: 800));
     _bgAnim = CurvedAnimation(parent: _bgCtrl, curve: Curves.easeOut);
 
     _cardCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 700))
-      ..forward();
+        vsync: this, duration: const Duration(milliseconds: 700));
     _cardAnim = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
         .animate(
             CurvedAnimation(parent: _cardCtrl, curve: Curves.easeOutCubic));
     _fadeAnim = CurvedAnimation(parent: _cardCtrl, curve: Curves.easeIn);
 
+    // Delay onboarding animations until after the startup logo transition finishes
+    // so there are zero competing animations on the GPU!
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) {
+        _bgCtrl.forward();
+        _cardCtrl.forward();
+      }
+    });
+
     _checkPermissions();
+    _loadWarningMins();
+  }
+
+  Future<void> _loadWarningMins() async {
+    final prefs = await SharedPreferences.getInstance();
+    int mins = prefs.getInt('warning_interval_mins') ?? 15;
+    try {
+      final nativeMins = await _channel.invokeMethod<int>('getWarningInterval');
+      if (nativeMins != null && nativeMins > 0) mins = nativeMins;
+    } catch (_) {}
+    if (mounted) setState(() => _warningMins = mins);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bgCtrl.dispose();
     _cardCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _checkPermissions() async {
-    // Heuristic: try AppUsage to see if usage access is granted
     bool usageOk = false;
     try {
       final end = DateTime.now();
@@ -394,14 +434,35 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       usageOk = true;
     } catch (_) {}
 
+    bool accessOk = false;
+    try {
+      accessOk =
+          await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
+    } catch (_) {}
+
     if (mounted) {
       setState(() {
         _usageGranted = usageOk;
+        _accessibilityGranted = accessOk;
       });
     }
   }
 
+  Future<void> _openAppInfo() async {
+    if (mounted) {
+      _showBeautifulToast(context, 'Opening App Info... Please allow restricted settings.', 'âš™ï¸');
+    }
+    try {
+      await _channel.invokeMethod('openAppInfo');
+    } catch (_) {}
+    await Future.delayed(const Duration(seconds: 2));
+    await _checkPermissions();
+  }
+
   Future<void> _openAccessibility() async {
+    if (mounted) {
+      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!', '♿');
+    }
     try {
       await _channel.invokeMethod('openSettings');
     } catch (_) {}
@@ -410,6 +471,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _openUsageAccess() async {
+    if (mounted) {
+      _showBeautifulToast(context, 'Opening Usage Access Settings... Please grant access!', '📱');
+    }
     try {
       await _channel.invokeMethod('openUsageAccess');
     } on PlatformException {
@@ -423,6 +487,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _finish() async {
+    if (!_accessibilityGranted || !_usageGranted) {
+      if (mounted) {
+        _showBeautifulToast(context, 'Please grant both permissions to continue!', 'âš ï¸');
+      }
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_done', true);
     widget.onDone();
@@ -431,7 +501,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final bothGranted = _accessibilityGranted || _usageGranted;
+    final bothGranted = _accessibilityGranted && _usageGranted;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -481,45 +551,45 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // Logo
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFBB86FC), Color(0xFF6200EE)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFBB86FC).withOpacity(0.5),
-                              blurRadius: 28,
-                              spreadRadius: 4,
-                            )
+                      Opacity(
+                        opacity: widget.hideHeader ? 0.0 : 1.0,
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFBB86FC).withOpacity(0.5),
+                                    blurRadius: 28,
+                                    spreadRadius: 4,
+                                  )
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: Image.asset('assets/icon.png', fit: BoxFit.cover),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            const Text(
+                              'Welcome to Lucid',
+                              style: TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ],
                         ),
-                        child: const Center(
-                          child: Text('✦',
-                              style:
-                                  TextStyle(fontSize: 30, color: Colors.white)),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      const Text(
-                        'Welcome to Lucid',
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        'Two quick permissions and you\'re set.\nLucid needs these to guard your attention.',
+                        'Three quick permissions and you\'re set.\nLucid needs these to guard your attention.',
                         style: TextStyle(
                           fontSize: 15,
                           color: Color(0xFF9E9E9E),
@@ -528,6 +598,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 40),
+
+                      // Permission card 0: Restricted Settings
+                      _PermissionCard(
+                        icon: 'âš™ï¸',
+                        title: 'Allow Restricted Settings',
+                        description:
+                            'If the Accessibility toggle is greyed out in settings, return here, tap "Open App Info", tap the top-right â‹® menu and select "Allow restricted settings". If you don\'t see it, you can skip this step!',
+                        granted: _accessibilityGranted,
+                        onGrant: _openAppInfo,
+                        grantLabel: 'Open App Info',
+                      ),
+                      const SizedBox(height: 16),
 
                       // Permission card 1: Accessibility
                       _PermissionCard(
@@ -543,7 +625,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
                       // Permission card 2: Usage Access
                       _PermissionCard(
-                        icon: '📊',
+                        icon: '📱',
                         title: 'Usage Access',
                         description:
                             'Allows Lucid to read which app is in the foreground so it can track session time.',
@@ -551,34 +633,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         onGrant: _openUsageAccess,
                         grantLabel: 'Grant Usage Access',
                       ),
-                      const SizedBox(height: 16),
-
-                      // Info box for Redmi / MIUI users
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A1225),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: const Color(0xFFBB86FC).withOpacity(0.25)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text('💡', style: TextStyle(fontSize: 18)),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'On Redmi / MIUI: If the Accessibility toggle appears greyed out, '
-                                'go to Settings → Apps → Lucid → ⋮ menu → Allow restricted settings.',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFFBB86FC),
-                                    height: 1.5),
-                              ),
-                            ),
-                          ],
-                        ),
+                      const SizedBox(height: 24),
+                      // Step 3: Set Warning Timer Interval
+                      _WarningTimerCard(
+                        intervalMins: _warningMins,
+                        onChanged: (val) async {
+                          setState(() => _warningMins = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setInt('warning_interval_mins', val);
+                          try {
+                            await _channel.invokeMethod('setWarningInterval', val);
+                          } catch (_) {}
+                          if (mounted) {
+                            _showBeautifulToast(context, 'Warning timer set to $val min${val == 1 ? "" : "s"}!', 'â°');
+                          }
+                        },
                       ),
                       const SizedBox(height: 36),
 
@@ -612,7 +681,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                     : [],
                               ),
                               child: const Text(
-                                'Get Started  →',
+                                'Get Started →',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -719,7 +788,7 @@ class _PermissionCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
             ),
             child: Center(
-              child: Text(granted ? '✓' : icon,
+              child: Text(granted ? '✅' : icon,
                   style: TextStyle(
                       fontSize: granted ? 24 : 22,
                       color: granted ? const Color(0xFF4CAF50) : Colors.white)),
@@ -769,43 +838,87 @@ class _PermissionCard extends StatelessWidget {
   }
 }
 
-// ─── Home Screen ──────────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Home Screen Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  final bool hideHeader;
+  const HomeScreen({Key? key, this.hideHeader = false}) : super(key: key);
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final List<Map<String, dynamic>> _apps = [];
+  bool _appsLoading = true;
   String _searchQuery = "";
+  static const MethodChannel appsChannel =
+    MethodChannel('lucid/apps');
   static const _channel =
-      MethodChannel('com.example.scroll_stop/accessibility');
+      MethodChannel('com.yuvaan.lucid/accessibility');
 
   bool _serviceEnabled = false;
+  int _warningMins = 15;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
-
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController =
         AnimationController(vsync: this, duration: const Duration(seconds: 2))
           ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _loadInstalledApps().then((_) {
-      _loadSavedApps();
-    });
 
-    _checkServiceStatus();
+    // Delay ALL platform channel calls and app loading until after startup animation completes
+    // to guarantee 60/120 FPS buttery smooth animation without ANY dropped frames or saveLayer jank!
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) {
+        _checkServiceStatus();
+        _loadWarningInterval();
+        _loadInstalledApps().then((_) {
+          _loadSavedApps();
+        });
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check accessibility status every time the app returns from background
+    // (e.g., after the user toggles the accessibility setting)
+    if (state == AppLifecycleState.resumed) {
+      _checkServiceStatus();
+    }
+  }
+
+  Future<void> _loadWarningInterval() async {
+    final prefs = await SharedPreferences.getInstance();
+    int mins = prefs.getInt('warning_interval_mins') ?? 15;
+    try {
+      final nativeMins = await _channel.invokeMethod<int>('getWarningInterval');
+      if (nativeMins != null && nativeMins > 0) mins = nativeMins;
+    } catch (_) {}
+    if (mounted) setState(() => _warningMins = mins);
+  }
+
+  Future<void> _setWarningInterval(int mins) async {
+    setState(() => _warningMins = mins);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('warning_interval_mins', mins);
+    try {
+      await _channel.invokeMethod('setWarningInterval', mins);
+    } catch (_) {}
+    if (mounted) {
+      _showBeautifulToast(context, 'Warning timer updated to $mins min${mins == 1 ? "" : "s"}!', 'â°');
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     super.dispose();
   }
@@ -829,6 +942,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             app['enabled'] = saved.contains(app['package']);
           }
         });
+        try {
+          await _channel.invokeMethod('setTargetApps', saved.toList());
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -840,14 +956,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .map<String>((a) => a['package'] as String)
         .toList();
     await prefs.setString('enabled_target_apps', jsonEncode(enabled));
+    try {
+      await _channel.invokeMethod('setTargetApps', enabled);
+    } catch (_) {}
   }
 
   Future<void> _checkServiceStatus() async {
     try {
-      final end = DateTime.now();
-      await AppUsage()
-          .getAppUsage(end.subtract(const Duration(seconds: 10)), end);
-      if (mounted) setState(() => _serviceEnabled = true);
+      final isEnabled =
+          await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
+      if (mounted) setState(() => _serviceEnabled = isEnabled);
     } catch (_) {
       if (mounted) setState(() => _serviceEnabled = false);
     }
@@ -859,243 +977,730 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } on PlatformException catch (e) {
       debugPrint('Failed: ${e.message}');
     }
+    if (mounted) {
+      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!', '♿');
+    }
     Future.delayed(const Duration(seconds: 2), () => _checkServiceStatus());
   }
 
+  Future<bool?> _showTypingPledgeDialog(String appName) {
+    const pledgeText = "i choose distraction over focus";
+    final controller = TextEditingController();
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final isMatch = controller.text.trim().toLowerCase() ==
+                pledgeText.toLowerCase();
+
+            Widget buildKey(String label, {int flex = 1, Color? bg, Color? fg}) {
+              return Expanded(
+                flex: flex,
+                child: Padding(
+                  padding: const EdgeInsets.all(2.0),
+                  child: Material(
+                    color: bg ?? const Color(0xFF2A2A3E),
+                    borderRadius: BorderRadius.circular(8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        setDialogState(() {
+                          if (label == 'âŒ«') {
+                            if (controller.text.isNotEmpty) {
+                              controller.text = controller.text
+                                  .substring(0, controller.text.length - 1);
+                            }
+                          } else if (label == 'Space') {
+                            controller.text = controller.text + ' ';
+                          } else if (label == 'Clear') {
+                            controller.text = '';
+                          } else {
+                            controller.text = controller.text + label;
+                          }
+                        });
+                      },
+                      child: Container(
+                        height: 38,
+                        alignment: Alignment.center,
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            color: fg ?? Colors.white,
+                            fontSize: label.length > 1 ? 13 : 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            final row1 = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+            final row2 = ['j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r'];
+            final row3 = ['s', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'âŒ«'];
+
+            return Dialog(
+              backgroundColor: const Color(0xFF1C1C2E),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: const BorderSide(color: Color(0x80FF6B6B), width: 1.5),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: const BoxDecoration(
+                        color: Color(0x26FF6B6B),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Text('ðŸ§˜', style: TextStyle(fontSize: 26)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Unbind "$appName"?',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'To remove focus protection, type the pledge using the mindful alphabetical keyboard:',
+                      style: TextStyle(
+                        color: Color(0xFFCCCCCC),
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D0D1A),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0x4DBB86FC)),
+                      ),
+                      child: const Text(
+                        '"$pledgeText"',
+                        style: TextStyle(
+                          color: Color(0xFFBB86FC),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D0D1A),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isMatch
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFBB86FC),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        controller.text.isEmpty
+                            ? 'Tap keys below to type...'
+                            : controller.text,
+                        style: TextStyle(
+                          color: controller.text.isEmpty
+                              ? const Color(0xFF666680)
+                              : Colors.white,
+                          fontSize: 15,
+                          fontWeight: controller.text.isEmpty
+                              ? FontWeight.normal
+                              : FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Custom Alphabetical Keyboard (No Glide/Autocorrect!) Ã¢"â‚¬Ã¢"â‚¬
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF141422),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: row1.map((k) => buildKey(k)).toList(),
+                          ),
+                          Row(
+                            children: row2.map((k) => buildKey(k)).toList(),
+                          ),
+                          Row(
+                            children: row3.map((k) {
+                              if (k == 'âŒ«') {
+                                return buildKey(k,
+                                    bg: const Color(0x4DCF4444),
+                                    fg: const Color(0xFFFF6B6B));
+                              }
+                              return buildKey(k);
+                            }).toList(),
+                          ),
+                          Row(
+                            children: [
+                              buildKey('Space',
+                                  flex: 3, bg: const Color(0xFF2A2A3E)),
+                              buildKey('Clear',
+                                  flex: 1,
+                                  bg: const Color(0xFF3A3A52),
+                                  fg: const Color(0xFFCCCCCC)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Perfectly Aligned Stacked Buttons Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: const Color(0x33BB86FC),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Ã°Å¸"ºÂ¡Ã¯Â¸Â Keep Protected',
+                            style: TextStyle(
+                              color: Color(0xFFBB86FC),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: isMatch
+                              ? () => Navigator.of(context).pop(true)
+                              : null,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: isMatch
+                                ? const Color(0xCCCF4444)
+                                : const Color(0xFF2A2A3E),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Remove Protection',
+                            style: TextStyle(
+                              color: isMatch
+                                  ? Colors.white
+                                  : const Color(0xFF666680),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _toggleApp(int index, bool value) async {
+    final appName = _apps[index]['name'];
+    if (!value) {
+      // User is trying to turn off protection! Show Typing Pledge challenge!
+      final confirmed = await _showTypingPledgeDialog(appName);
+      if (confirmed != true) {
+        return;
+      }
+    }
+
     setState(() => _apps[index]['enabled'] = value);
     await _saveEnabledApps();
+    if (mounted) {
+      _showBeautifulToast(context, value ? 'Added "$appName" to monitored apps' : 'Removed "$appName" from monitored apps', value ? '✅' : 'âŒ');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final enabledCount = _apps.where((a) => a['enabled'] == true).length;
-    final filteredApps = _apps.where((app) {
-
-  final name =
-      app['name']
-          .toString()
-          .toLowerCase();
-
-  return name.contains(
-    _searchQuery.toLowerCase(),
-  );
-
-}).toList();
+    final enabledApps = _apps.where((app) {
+      final name = app['name'].toString().toLowerCase();
+      return app['enabled'] == true && name.contains(_searchQuery.toLowerCase());
+    }).toList();
+    final otherApps = _apps.where((app) {
+      final name = app['name'].toString().toLowerCase();
+      return app['enabled'] != true && name.contains(_searchQuery.toLowerCase());
+    }).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            // ── App Bar ────────────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFBB86FC), Color(0xFF6200EE)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    // Ã¢"â‚¬Ã¢"â‚¬ App Bar Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        child: Opacity(
+                          opacity: widget.hideHeader ? 0.0 : 1.0,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFBB86FC).withOpacity(0.4),
+                                      blurRadius: 14,
+                                      spreadRadius: 1,
+                                    )
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.asset('assets/icon.png', fit: BoxFit.cover),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Lucid',
+                                      style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: 1.2)),
+                                  Text('Mindful Screen Time',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Color(0xFF9E9E9E))),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFBB86FC).withOpacity(0.4),
-                            blurRadius: 14,
-                            spreadRadius: 1,
-                          )
-                        ],
-                      ),
-                      child: const Center(
-                        child: Text('✦',
-                            style:
-                                TextStyle(fontSize: 20, color: Colors.white)),
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Lucid',
-                            style: TextStyle(
-                                fontSize: 22,
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Status Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                        child: _StatusCard(
+                          pulseAnim: _pulseAnim,
+                          serviceEnabled: _serviceEnabled,
+                          onActivate: _openAccessibilitySettings,
+                          enabledApps: enabledApps.length,
+                        ),
+                      ),
+                    ),
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Warning Timer Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                        child: _WarningTimerCard(
+                          intervalMins: _warningMins,
+                          onChanged: _setWarningInterval,
+                        ),
+                      ),
+                    ),
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Search Bar Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+                        child: TextField(
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Search installed apps...',
+                            hintStyle: const TextStyle(color: Color(0xFF616161)),
+                            prefixIcon:
+                                const Icon(Icons.search, color: Color(0xFF9E9E9E)),
+                            filled: true,
+                            fillColor: const Color(0xFF1C1C2E),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onChanged: (val) {
+                            setState(() {
+                              _searchQuery = val;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Enabled Target Apps Section Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    if (enabledApps.isNotEmpty) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Active Monitored Apps',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFBB86FC),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFBB86FC).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text('${enabledApps.length} active',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFBB86FC))),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final app = enabledApps[index];
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                              child: _AppTile(
+                                name: app['name'],
+                                package: app['package'],
+                                enabled: app['enabled'],
+                                onChanged: (v) {
+                                  final originalIndex = _apps.indexWhere(
+                                    (a) => a['package'] == app['package'],
+                                  );
+                                  _toggleApp(originalIndex, v);
+                                },
+                              ),
+                            );
+                          },
+                          childCount: enabledApps.length,
+                        ),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                    ],
+
+                    // Ã¢"â‚¬Ã¢"â‚¬ Loading indicator while apps are being fetched Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    if (_appsLoading)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Color(0xFFBB86FC),
+                                  ),
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Loading installed apps...',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF9E9E9E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    if (!_appsLoading) ...[
+                    // Ã¢"â‚¬Ã¢"â‚¬ Other / Available Apps Section Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              enabledApps.isNotEmpty ? 'Available Apps' : 'All Installed Apps',
+                              style: const TextStyle(
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
-                                letterSpacing: 1.2)),
-                        Text('Mindful Screen Time',
-                            style: TextStyle(
-                                fontSize: 12, color: Color(0xFF9E9E9E))),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── Status Card ───────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                child: _StatusCard(
-                  pulseAnim: _pulseAnim,
-                  serviceEnabled: _serviceEnabled,
-                  onActivate: _openAccessibilitySettings,
-                  enabledApps: enabledCount,
-                ),
-              ),
-            ),
-
-            // ── How It Works ──────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                child: _HowItWorksCard(),
-              ),
-            ),
-SliverToBoxAdapter(
-  child: Padding(
-    padding: const EdgeInsets.fromLTRB(
-      24,
-      20,
-      24,
-      16,
-    ),
-    child: Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF17152D),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: TextField(
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-        },
-        style: const TextStyle(
-          color: Colors.white,
-        ),
-        decoration: const InputDecoration(
-          hintText: 'Search apps...',
-          hintStyle: TextStyle(
-            color: Colors.white54,
-          ),
-          prefixIcon: Icon(
-            Icons.search,
-            color: Colors.white54,
-          ),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.all(16),
-        ),
-      ),
-    ),
-  ),
-),
-            // ── App List Header ───────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Monitored Apps',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1C1C2E),
-                        borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C2E),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text('${otherApps.length} apps',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Color(0xFF9E9E9E))),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Text('$enabledCount active',
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFFBB86FC))),
                     ),
-                  ],
-                ),
-              ),
-            ),
 
-            // ── App Tiles ─────────────────────────────────────────────────
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final app = filteredApps[index];
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-                    child: _AppTile(
-                      icon: '📱',
-                      name: app['name'],
-                      package: app['package'],
-                      enabled: app['enabled'],
-                      onChanged: (v) {
-
-  final originalIndex = _apps.indexWhere(
-    (a) => a['package'] == app['package'],
-  );
-
-  _toggleApp(originalIndex, v);
-},
+                    // Ã¢"â‚¬Ã¢"â‚¬ All Apps Tiles Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final app = otherApps[index];
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                            child: _AppTile(
+                              name: app['name'],
+                              package: app['package'],
+                              enabled: app['enabled'],
+                              onChanged: (v) {
+                                final originalIndex = _apps.indexWhere(
+                                  (a) => a['package'] == app['package'],
+                                );
+                                _toggleApp(originalIndex, v);
+                              },
+                            ),
+                          );
+                        },
+                        childCount: otherApps.length,
+                      ),
                     ),
-                  );
-                },
-                childCount: filteredApps.length,
-              ),
-            ),
+                    ], // end !_appsLoading
 
-            const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
       ),
     );
   }
-
   Future<void> _loadInstalledApps() async {
-    final apps = await InstalledApps.getInstalledApps();
+    try {
+      final List<dynamic> apps = await appsChannel.invokeMethod('getLauncherApps');
 
-    apps.sort(
-      (a, b) => a.name.toLowerCase().compareTo(
-            b.name.toLowerCase(),
-          ),
-    );
-
-    setState(() {
-      _apps.clear();
-
-      for (var app in apps) {
-        if (
-          app.name.toLowerCase().contains("you") ||
-          app.name.toLowerCase().contains("cam") ||
-          app.name.toLowerCase().contains("calc") ||
-          app.name.toLowerCase().contains("calendar")
-        ) {
-          print("${app.name} --> ${app.packageName}");
+      setState(() {
+        _apps.clear();
+        for (final app in apps) {
+          final package = app['package'].toString();
+          if (package == 'com.yuvaan.lucid') {
+            continue;
+          }
+          _apps.add({
+            'name': app['name'],
+            'package': package,
+            'enabled': false,
+          });
         }
-
-        final package = app.packageName.toLowerCase();
-        if (app.packageName == "com.example.lucid") {
-          continue;
-        }
-
-        _apps.add({
-          'name': app.name,
-          'package': app.packageName,
-          'enabled': false,
-        });
-      }
-    });
+        // Sort case-insensitively so apps starting with lowercase letters (like 'iMobile')
+        // are properly grouped with their uppercase counterparts in alphabetical order!
+        _apps.sort((a, b) => (a['name'] as String)
+            .toLowerCase()
+            .compareTo((b['name'] as String).toLowerCase()));
+        _appsLoading = false;
+      });
+    } catch (e) {
+      print("Error loading apps: $e");
+      if (mounted) setState(() => _appsLoading = false);
+    }
   }
 }
 
-// ─── Status Card ──────────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Warning Timer Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+
+class _WarningTimerCard extends StatefulWidget {
+  final int intervalMins;
+  final ValueChanged<int> onChanged;
+
+  const _WarningTimerCard({
+    required this.intervalMins,
+    required this.onChanged,
+  });
+
+  @override
+  State<_WarningTimerCard> createState() => _WarningTimerCardState();
+}
+
+class _WarningTimerCardState extends State<_WarningTimerCard> {
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.intervalMins.toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _WarningTimerCard old) {
+    super.didUpdateWidget(old);
+    if (old.intervalMins != widget.intervalMins &&
+        _ctrl.text != widget.intervalMins.toString()) {
+      _ctrl.text = widget.intervalMins.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit(String raw) {
+    FocusScope.of(context).unfocus();
+    final val = int.tryParse(raw.trim());
+    if (val != null && val > 0 && val <= 999) {
+      widget.onChanged(val);
+    } else {
+      // revert to current value
+      _ctrl.text = widget.intervalMins.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C2E),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFBB86FC).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBB86FC).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.timer_outlined,
+                    color: Color(0xFFBB86FC), size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Warning Timer Interval',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Alert after ${widget.intervalMins} min${widget.intervalMins == 1 ? "" : "s"} in a monitored app',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 15',
+                    hintStyle: const TextStyle(color: Color(0xFF616161)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.check_circle, color: Color(0xFFBB86FC)),
+                      onPressed: () => _submit(_ctrl.text),
+                      tooltip: 'Save Timer Interval',
+                    ),
+                    suffixText: 'mins',
+                    suffixStyle: const TextStyle(
+                      color: Color(0xFF9E9E9E),
+                      fontSize: 13,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF0D0D1A),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                  ),
+                  onSubmitted: _submit,
+                  onEditingComplete: () => _submit(_ctrl.text),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Status Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class _StatusCard extends StatelessWidget {
   final Animation<double> pulseAnim;
@@ -1232,7 +1837,7 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-// ─── How It Works Card ────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ How It Works Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class _HowItWorksCard extends StatelessWidget {
   const _HowItWorksCard();
@@ -1255,14 +1860,14 @@ class _HowItWorksCard extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: Color(0xFFBB86FC))),
           const SizedBox(height: 16),
-          _step('⏳', '60-Second Mindful Pause',
+          _step('Ã¢ÂÂ³', '60-Second Mindful Pause',
               'When you open a monitored app, a beautiful animated timer overlay appears. It vanishes once 60 seconds pass.'),
           const SizedBox(height: 12),
-          _step('🔁', 'Session Tracking',
+          _step('Ã°Å¸"Â', 'Session Tracking',
               'Once inside, you can freely switch tabs without interruption. The timer only re-appears if you leave and come back.'),
           const SizedBox(height: 12),
-          _step('⏰', '15-Minutes Usage Reminder',
-              'After your session limit, Lucid asks if you really want to keep scrolling — or do something better.'),
+          _step('Ã¢ÂÂ°', '15-Minutes Usage Reminder',
+              'After your session limit, Lucid asks if you really want to keep scrolling - or do something better.'),
         ],
       ),
     );
@@ -1295,25 +1900,46 @@ class _HowItWorksCard extends StatelessWidget {
   }
 }
 
-// ─── App Tile ─────────────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ App Tile Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 class _AppTile extends StatelessWidget {
-  final String icon;
   final String name;
   final String package;
   final bool enabled;
   final ValueChanged<bool> onChanged;
 
   const _AppTile({
-    required this.icon,
     required this.name,
     required this.package,
     required this.enabled,
     required this.onChanged,
   });
 
+  // Generate a consistent rainbow color from the starting letter of the app name!
+  Color _colorFromName(String name) {
+    if (name.isEmpty) return const Color(0xFFBB86FC);
+    final firstChar = name.trim().toUpperCase();
+    if (firstChar.isEmpty) return const Color(0xFFBB86FC);
+    final code = firstChar.codeUnitAt(0);
+    // 'A' is 65, 'Z' is 90 -> map index 0..25 smoothly across the 360 degree rainbow color wheel!
+    if (code >= 65 && code <= 90) {
+      final index = code - 65;
+      final hue = (index * (360.0 / 26.0)) % 360.0;
+      return HSVColor.fromAHSV(1.0, hue, 0.75, 1.0).toColor();
+    } else if (code >= 48 && code <= 57) {
+      // Numbers get a nice cyan spectrum
+      final index = code - 48;
+      final hue = (180.0 + index * 15.0) % 360.0;
+      return HSVColor.fromAHSV(1.0, hue, 0.75, 1.0).toColor();
+    }
+    return const Color(0xFFBB86FC);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final bgColor = _colorFromName(name);
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       decoration: BoxDecoration(
@@ -1332,19 +1958,26 @@ class _AppTile extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: const Color(0xFF0D0D1A),
-            borderRadius: BorderRadius.circular(10),
+            color: bgColor.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: bgColor.withOpacity(0.4), width: 1),
           ),
-          child:
-              Center(child: Text(icon, style: const TextStyle(fontSize: 20))),
+          child: Center(
+            child: Text(
+              initial,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: bgColor,
+              ),
+            ),
+          ),
         ),
         title: Text(name,
             style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 15)),
-        subtitle: Text(package,
-            style: const TextStyle(color: Color(0xFF616161), fontSize: 11)),
         trailing: Switch(
           value: enabled,
           activeColor: const Color(0xFFBB86FC),
@@ -1354,3 +1987,137 @@ class _AppTile extends StatelessWidget {
     );
   }
 }
+
+void _showBeautifulToast(BuildContext context, String message, String icon) {
+  final overlay = Overlay.of(context);
+  late OverlayEntry entry;
+
+  entry = OverlayEntry(
+    builder: (context) => _AnimatedToast(
+      message: message,
+      icon: icon,
+      onDismiss: () => entry.remove(),
+    ),
+  );
+
+  overlay.insert(entry);
+}
+
+class _AnimatedToast extends StatefulWidget {
+  final String message;
+  final String icon;
+  final VoidCallback onDismiss;
+
+  const _AnimatedToast({
+    Key? key,
+    required this.message,
+    required this.icon,
+    required this.onDismiss,
+  }) : super(key: key);
+
+  @override
+  State<_AnimatedToast> createState() => _AnimatedToastState();
+}
+
+class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
+    _fade = CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.4, curve: Curves.easeIn));
+
+    _ctrl.forward();
+
+    Future.delayed(const Duration(seconds: 2, milliseconds: 500), () {
+      if (mounted) {
+        _ctrl.reverse().then((_) {
+          widget.onDismiss();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 50,
+      left: 24,
+      right: 24,
+      child: Material(
+        color: Colors.transparent,
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _scale.value,
+              child: Opacity(
+                opacity: _fade.value,
+                child: child,
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2A1040), Color(0xFF160824)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFBB86FC).withOpacity(0.5), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFBB86FC).withOpacity(0.3),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 8),
+                )
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFBB86FC).withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(widget.icon, style: const TextStyle(fontSize: 20)),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    widget.message,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+
+

@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.lucid">
+    package="com.yuvaan.lucid">
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
@@ -15,7 +15,7 @@
             android:name=".LucidAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:enabled="true"
-            android:exported="false">
+            android:exported="true">
 
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
