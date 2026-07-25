@@ -1317,7 +1317,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 ),
                               ),
                               const SizedBox(width: 14),
-                              const Column(
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text('Lucid',
@@ -1326,7 +1326,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                           fontWeight: FontWeight.bold,
                                           color: Theme.of(context).colorScheme.onSurface,
                                           letterSpacing: 1.2)),
-                                  Text('Mindful Screen Time',
+                                  const Text('Mindful Screen Time',
                                       style: TextStyle(
                                           fontSize: 12, color: Color(0xFF9E9E9E))),
                                 ],
