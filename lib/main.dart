@@ -43,7 +43,7 @@ class LucidApp extends StatelessWidget {
           ),
           darkTheme: ThemeData.dark().copyWith(
             scaffoldBackgroundColor: const Color(0xFF0D0D0D),
-            colorScheme: const ColorScheme.dark(
+            colorScheme: ColorScheme.dark(
               primary: Color(0xFFBB86FC),
               secondary: Color(0xFF03DAC6),
               surface: Theme.of(context).colorScheme.surface,
@@ -243,7 +243,7 @@ class _SplashScreenState extends State<_SplashScreen>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
+                          Text(
                             'Mindful Screen Time',
                             style: TextStyle(
                               fontSize: 13,
@@ -546,7 +546,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             child: Container(
               width: size.width,
               height: size.height,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: Alignment(0, -0.4),
                   radius: 1.4,
@@ -607,7 +607,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               ),
                             ),
                             const SizedBox(height: 24),
-                            const Text(
+                            Text(
                               'Welcome to Lucid',
                               style: TextStyle(
                                 fontSize: 30,
@@ -621,7 +621,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         'Three quick permissions and you\'re set.\nLucid needs these to guard your attention.',
                         style: TextStyle(
                           fontSize: 15,
@@ -692,7 +692,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 18),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
+                                gradient: LinearGradient(
                                   colors: [
                                     Color(0xFFBB86FC),
                                     Color(0xFF7C4DFF)
@@ -710,7 +710,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       ]
                                     : [],
                               ),
-                              child: const Text(
+                              child: Text(
                                 'Get Started ',
                                 style: TextStyle(
                                   fontSize: 16,
@@ -834,7 +834,7 @@ class _PermissionCard extends StatelessWidget {
                             granted ? const Color(0xFF4CAF50) : Colors.white)),
                 const SizedBox(height: 4),
                 Text(description,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), height: 1.4)),
                 if (!granted) ...[
                   const SizedBox(height: 12),
@@ -844,12 +844,12 @@ class _PermissionCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
+                        gradient: LinearGradient(
                             colors: [Color(0xFFBB86FC), Color(0xFF7C4DFF)]),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(grantLabel,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                               color: Theme.of(context).colorScheme.onSurface)),
@@ -1085,7 +1085,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     Container(
                       width: 52,
                       height: 52,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: Color(0x26FF6B6B),
                         shape: BoxShape.circle,
                       ),
@@ -1096,7 +1096,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     const SizedBox(height: 12),
                     Text(
                       'Unbind "$appName"?',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -1104,7 +1104,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'To remove focus protection, type the pledge using the mindful alphabetical keyboard:',
                       style: TextStyle(
                         color: Color(0xFFCCCCCC),
@@ -1122,7 +1122,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0x4DBB86FC)),
                       ),
-                      child: const Text(
+                      child: Text(
                         '"$pledgeText"',
                         style: TextStyle(
                           color: Color(0xFFBB86FC),
@@ -1218,7 +1218,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
+                          child: Text(
                             '" Keep Protected',
                             style: TextStyle(
                               color: Color(0xFFBB86FC),
@@ -1334,7 +1334,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                           fontWeight: FontWeight.bold,
                                           color: Theme.of(context).colorScheme.onSurface,
                                           letterSpacing: 1.2)),
-                                  const Text('Mindful Screen Time',
+                                  Text('Mindful Screen Time',
                                       style: TextStyle(
                                           fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
                                 ],
@@ -1379,7 +1379,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search installed apps...',
-                            hintStyle: const TextStyle(color: Color(0xFF616161)),
+                            hintStyle: TextStyle(color: Color(0xFF616161)),
                             prefixIcon:
                                 Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                             filled: true,
@@ -1497,7 +1497,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           children: [
                             Text(
                               enabledApps.isNotEmpty ? 'Available Apps' : 'All Installed Apps',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.onSurface,
@@ -1511,7 +1511,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text('${otherApps.length} apps',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
                             ),
                           ],
@@ -1655,7 +1655,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                   color: const Color(0xFFBB86FC).withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.timer_outlined,
+                child: Icon(Icons.timer_outlined,
                     color: Color(0xFFBB86FC), size: 22),
               ),
               const SizedBox(width: 14),
@@ -1663,7 +1663,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Warning Timer Interval',
                       style: TextStyle(
                         fontSize: 16,
@@ -1674,7 +1674,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                     const SizedBox(height: 4),
                     Text(
                       'Alert after ${widget.intervalMins} min${widget.intervalMins == 1 ? "" : "s"} in a monitored app',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                       ),
@@ -1691,16 +1691,16 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                 child: TextField(
                   controller: _ctrl,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                   decoration: InputDecoration(
                     hintText: 'e.g. 15',
-                    hintStyle: const TextStyle(color: Color(0xFF616161)),
+                    hintStyle: TextStyle(color: Color(0xFF616161)),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.check_circle, color: Color(0xFFBB86FC)),
+                      icon: Icon(Icons.check_circle, color: Color(0xFFBB86FC)),
                       onPressed: () => _submit(_ctrl.text),
                       tooltip: 'Save Timer Interval',
                     ),
@@ -1749,7 +1749,7 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [Theme.of(context).colorScheme.surface, Theme.of(context).scaffoldBackgroundColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1812,7 +1812,7 @@ class _StatusCard extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               serviceEnabled ? 'Lucid is guarding you.' : 'Activate Lucid',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).colorScheme.onSurface,
@@ -1824,7 +1824,7 @@ class _StatusCard extends StatelessWidget {
                   ? 'Monitoring $enabledApps app${enabledApps != 1 ? "s" : ""}. '
                       'A 60s mindful pause runs every time you open a monitored app.'
                   : 'Enable the Accessibility Service so Lucid can intercept target apps.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 height: 1.5,
@@ -1844,7 +1844,7 @@ class _StatusCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  child: const Text(
+                  child: Text(
                     'Enable Accessibility Service ',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
@@ -1976,7 +1976,7 @@ class _AppTileState extends State<_AppTile> {
               ),
             ),
             title: Text(widget.name,
-                style: const TextStyle(
+                style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                     fontSize: 15)),
@@ -2004,13 +2004,13 @@ class _AppTileState extends State<_AppTile> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Warning Timer',
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           _customTimer == 0 ? 'Global Default' : '$_customTimer mins',
-                          style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 13, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(0xFFBB86FC), fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -2033,7 +2033,7 @@ class _AppTileState extends State<_AppTile> {
                         },
                       ),
                     ),
-                    const Text(
+                    Text(
                       'Drag to 0 to use the global warning timer.',
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: 11),
                     )
@@ -2130,7 +2130,7 @@ class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProvide
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 colors: [Color(0xFF2A1040), Color(0xFF160824)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -2152,7 +2152,7 @@ class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProvide
                 Expanded(
                   child: Text(
                     widget.message,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
