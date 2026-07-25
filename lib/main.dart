@@ -6,7 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
-void main() {
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  final isDark = prefs.getBool('is_dark_theme') ?? true;
+  themeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
   runApp(const LucidApp());
 }
 
@@ -15,23 +21,42 @@ class LucidApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Lucid - Mindful Screen Time',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0D0D0D),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFBB86FC),
-          secondary: Color(0xFF03DAC6),
-          surface: Color(0xFF1C1C2E),
-        ),
-      ),
-      home: const _AppEntry(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (_, mode, __) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Lucid - Mindful Screen Time',
+          themeMode: mode,
+          theme: ThemeData.light().copyWith(
+            scaffoldBackgroundColor: const Color(0xFFF0F0F5),
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF6200EE),
+              secondary: Color(0xFF03DAC6),
+              surface: Color(0xFFFFFFFF),
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFFF0F0F5),
+              foregroundColor: Colors.black87,
+              elevation: 0,
+            ),
+          ),
+          darkTheme: ThemeData.dark().copyWith(
+            scaffoldBackgroundColor: const Color(0xFF0D0D0D),
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFBB86FC),
+              secondary: Color(0xFF03DAC6),
+              surface: Color(0xFF1C1C2E),
+            ),
+          ),
+          home: const _AppEntry(),
+        );
+      },
     );
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Entry point: decides whether to show onboarding or home Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ Entry point: decides whether to show onboarding or home """""""""""""""""
 
 class _AppEntry extends StatefulWidget {
   const _AppEntry();
@@ -105,7 +130,7 @@ class _AppEntryState extends State<_AppEntry> with SingleTickerProviderStateMixi
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Splash / App Loading Screen Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ Splash / App Loading Screen """""""""""""""""""""""""""""""""""""""""""""
 
 class _SplashScreen extends StatefulWidget {
   final Animation<double>? transAnim;
@@ -346,7 +371,7 @@ class _ShimmerBarState extends State<_ShimmerBar>
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Onboarding Screen (first-launch only) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ Onboarding Screen (first-launch only) """""""""""""""""""""""""""""""""""
 
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onDone;
@@ -450,7 +475,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Future<void> _openAppInfo() async {
     if (mounted) {
-      _showBeautifulToast(context, 'Opening App Info... Please allow restricted settings.', 'âš™ï¸');
+      _showBeautifulToast(context, 'Opening App Info... Please allow restricted settings.');
     }
     try {
       await _channel.invokeMethod('openAppInfo');
@@ -461,7 +486,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Future<void> _openAccessibility() async {
     if (mounted) {
-      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!', '♿');
+      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!');
     }
     try {
       await _channel.invokeMethod('openSettings');
@@ -472,7 +497,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Future<void> _openUsageAccess() async {
     if (mounted) {
-      _showBeautifulToast(context, 'Opening Usage Access Settings... Please grant access!', '📱');
+      _showBeautifulToast(context, 'Opening Usage Access Settings... Please grant access!');
     }
     try {
       await _channel.invokeMethod('openUsageAccess');
@@ -489,7 +514,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Future<void> _finish() async {
     if (!_accessibilityGranted || !_usageGranted) {
       if (mounted) {
-        _showBeautifulToast(context, 'Please grant both permissions to continue!', 'âš ï¸');
+        _showBeautifulToast(context, 'Please grant both permissions to continue!');
       }
       return;
     }
@@ -601,10 +626,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
                       // Permission card 0: Restricted Settings
                       _PermissionCard(
-                        icon: 'âš™ï¸',
                         title: 'Allow Restricted Settings',
                         description:
-                            'If the Accessibility toggle is greyed out in settings, return here, tap "Open App Info", tap the top-right â‹® menu and select "Allow restricted settings". If you don\'t see it, you can skip this step!',
+                            'If the Accessibility toggle is greyed out in settings, return here, tap "Open App Info", tap the top-right  menu and select "Allow restricted settings". If you don\'t see it, you can skip this step!',
                         granted: _accessibilityGranted,
                         onGrant: _openAppInfo,
                         grantLabel: 'Open App Info',
@@ -613,7 +637,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
                       // Permission card 1: Accessibility
                       _PermissionCard(
-                        icon: '♿',
                         title: 'Accessibility Service',
                         description:
                             'Lets Lucid detect when you open a monitored app and show the mindful timer overlay.',
@@ -625,7 +648,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
                       // Permission card 2: Usage Access
                       _PermissionCard(
-                        icon: '📱',
                         title: 'Usage Access',
                         description:
                             'Allows Lucid to read which app is in the foreground so it can track session time.',
@@ -645,7 +667,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             await _channel.invokeMethod('setWarningInterval', val);
                           } catch (_) {}
                           if (mounted) {
-                            _showBeautifulToast(context, 'Warning timer set to $val min${val == 1 ? "" : "s"}!', 'â°');
+                            _showBeautifulToast(context, 'Warning timer set to $val min${val == 1 ? "" : "s"}!');
                           }
                         },
                       ),
@@ -681,7 +703,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                     : [],
                               ),
                               child: const Text(
-                                'Get Started →',
+                                'Get Started ',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -736,7 +758,7 @@ class _Orb extends StatelessWidget {
 }
 
 class _PermissionCard extends StatelessWidget {
-  final String icon;
+  
   final String title;
   final String description;
   final bool granted;
@@ -744,7 +766,7 @@ class _PermissionCard extends StatelessWidget {
   final String grantLabel;
 
   const _PermissionCard({
-    required this.icon,
+    
     required this.title,
     required this.description,
     required this.granted,
@@ -788,10 +810,7 @@ class _PermissionCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
             ),
             child: Center(
-              child: Text(granted ? '✅' : icon,
-                  style: TextStyle(
-                      fontSize: granted ? 24 : 22,
-                      color: granted ? const Color(0xFF4CAF50) : Colors.white)),
+              child: Icon(Icons.check, size: granted ? 24 : 22, color: granted ? const Color(0xFF4CAF50) : Colors.white),
             ),
           ),
           const SizedBox(width: 16),
@@ -838,7 +857,7 @@ class _PermissionCard extends StatelessWidget {
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Home Screen Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ Home Screen """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 class HomeScreen extends StatefulWidget {
   final bool hideHeader;
@@ -912,7 +931,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       await _channel.invokeMethod('setWarningInterval', mins);
     } catch (_) {}
     if (mounted) {
-      _showBeautifulToast(context, 'Warning timer updated to $mins min${mins == 1 ? "" : "s"}!', 'â°');
+      _showBeautifulToast(context, 'Warning timer updated to $mins min${mins == 1 ? "" : "s"}!');
     }
   }
 
@@ -978,7 +997,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       debugPrint('Failed: ${e.message}');
     }
     if (mounted) {
-      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!', '♿');
+      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!');
     }
     Future.delayed(const Duration(seconds: 2), () => _checkServiceStatus());
   }
@@ -1007,7 +1026,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       borderRadius: BorderRadius.circular(8),
                       onTap: () {
                         setDialogState(() {
-                          if (label == 'âŒ«') {
+                          if (label == 'DEL') {
                             if (controller.text.isNotEmpty) {
                               controller.text = controller.text
                                   .substring(0, controller.text.length - 1);
@@ -1041,7 +1060,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
             final row1 = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
             final row2 = ['j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r'];
-            final row3 = ['s', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'âŒ«'];
+            final row3 = ['s', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'DEL'];
 
             return Dialog(
               backgroundColor: const Color(0xFF1C1C2E),
@@ -1063,7 +1082,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         shape: BoxShape.circle,
                       ),
                       child: const Center(
-                        child: Text('ðŸ§˜', style: TextStyle(fontSize: 26)),
+                        child: const Icon(Icons.shield, size: 26, color: Colors.white),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -1138,7 +1157,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     ),
                     const SizedBox(height: 16),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Custom Alphabetical Keyboard (No Glide/Autocorrect!) Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Custom Alphabetical Keyboard (No Glide/Autocorrect!) ""
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
@@ -1155,7 +1174,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           ),
                           Row(
                             children: row3.map((k) {
-                              if (k == 'âŒ«') {
+                              if (k == 'DEL') {
                                 return buildKey(k,
                                     bg: const Color(0x4DCF4444),
                                     fg: const Color(0xFFFF6B6B));
@@ -1178,7 +1197,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     ),
                     const SizedBox(height: 20),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Perfectly Aligned Stacked Buttons Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Perfectly Aligned Stacked Buttons """"""""""""""""""""""
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1192,7 +1211,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                             ),
                           ),
                           child: const Text(
-                            'Ã°Å¸"ºÂ¡Ã¯Â¸Â Keep Protected',
+                            '" Keep Protected',
                             style: TextStyle(
                               color: Color(0xFFBB86FC),
                               fontWeight: FontWeight.bold,
@@ -1250,7 +1269,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     setState(() => _apps[index]['enabled'] = value);
     await _saveEnabledApps();
     if (mounted) {
-      _showBeautifulToast(context, value ? 'Added "$appName" to monitored apps' : 'Removed "$appName" from monitored apps', value ? '✅' : 'âŒ');
+      _showBeautifulToast(context, value ? 'Added "$appName" to monitored apps' : 'Removed "$appName" from monitored apps');
     }
   }
 
@@ -1267,11 +1286,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-                    // Ã¢"â‚¬Ã¢"â‚¬ App Bar Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" App Bar """"""""""""""""""""""""""""""""""""""""""""""""""""
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -1305,12 +1324,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                       style: TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                          color: Theme.of(context).colorScheme.onSurface,
                                           letterSpacing: 1.2)),
                                   Text('Mindful Screen Time',
                                       style: TextStyle(
                                           fontSize: 12, color: Color(0xFF9E9E9E))),
                                 ],
+                              ),
+                              const Spacer(),
+                              ValueListenableBuilder<ThemeMode>(
+                                valueListenable: themeNotifier,
+                                builder: (_, mode, __) {
+                                  final isDark = mode == ThemeMode.dark;
+                                  return IconButton(
+                                    icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                    onPressed: () async {
+                                      final prefs = await SharedPreferences.getInstance();
+                                      final newTheme = isDark ? ThemeMode.light : ThemeMode.dark;
+                                      themeNotifier.value = newTheme;
+                                      await prefs.setBool('is_dark_theme', !isDark);
+                                    },
+                                  );
+                                }
                               ),
                             ],
                           ),
@@ -1318,7 +1354,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
                     ),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Status Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Status Card """""""""""""""""""""""""""""""""""""""""""""""
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
@@ -1331,7 +1367,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
                     ),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Warning Timer Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Warning Timer Card """"""""""""""""""""""""""""""""""""""""
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -1342,7 +1378,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
                     ),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Search Bar Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Search Bar """"""""""""""""""""""""""""""""""""""""""""""""
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
@@ -1370,7 +1406,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
                     ),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Enabled Target Apps Section Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Enabled Target Apps Section """""""""""""""""""""""""""""""
                     if (enabledApps.isNotEmpty) ...[
                       SliverToBoxAdapter(
                         child: Padding(
@@ -1428,7 +1464,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       const SliverToBoxAdapter(child: SizedBox(height: 16)),
                     ],
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ Loading indicator while apps are being fetched Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Loading indicator while apps are being fetched """"""""""
                     if (_appsLoading)
                       const SliverToBoxAdapter(
                         child: Padding(
@@ -1459,7 +1495,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
 
                     if (!_appsLoading) ...[
-                    // Ã¢"â‚¬Ã¢"â‚¬ Other / Available Apps Section Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" Other / Available Apps Section """"""""""""""""""""""""""""
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
@@ -1490,7 +1526,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       ),
                     ),
 
-                    // Ã¢"â‚¬Ã¢"â‚¬ All Apps Tiles Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+                    // "" All Apps Tiles """"""""""""""""""""""""""""""""""""""""""""
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -1552,7 +1588,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Warning Timer Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ Warning Timer Card """""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 class _WarningTimerCard extends StatefulWidget {
   final int intervalMins;
@@ -1594,11 +1630,12 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
   void _submit(String raw) {
     FocusScope.of(context).unfocus();
     final val = int.tryParse(raw.trim());
-    if (val != null && val > 0 && val <= 999) {
+    if (val != null && val >= 1 && val <= 20) {
       widget.onChanged(val);
     } else {
       // revert to current value
       _ctrl.text = widget.intervalMins.toString();
+      _showBeautifulToast(context, 'Timer must be between 1 and 20 minutes');
     }
   }
 
@@ -1700,7 +1737,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Status Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ Status Card """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 class _StatusCard extends StatelessWidget {
   final Animation<double> pulseAnim;
@@ -1815,14 +1852,14 @@ class _StatusCard extends StatelessWidget {
                     elevation: 0,
                   ),
                   child: const Text(
-                    'Enable Accessibility Service →',
+                    'Enable Accessibility Service ',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
               ),
               const SizedBox(height: 10),
               const Text(
-                'Settings → Accessibility → Downloaded Apps → Lucid',
+                'Settings  Accessibility  Downloaded Apps  Lucid',
                 style: TextStyle(
                     fontSize: 12,
                     color: Color(0xFF9E9E9E),
@@ -1837,7 +1874,7 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ How It Works Card Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ How It Works Card """"""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 class _HowItWorksCard extends StatelessWidget {
   const _HowItWorksCard();
@@ -1860,14 +1897,14 @@ class _HowItWorksCard extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: Color(0xFFBB86FC))),
           const SizedBox(height: 16),
-          _step('Ã¢ÂÂ³', '60-Second Mindful Pause',
+          _step('', '60-Second Mindful Pause',
               'When you open a monitored app, a beautiful animated timer overlay appears. It vanishes once 60 seconds pass.'),
           const SizedBox(height: 12),
-          _step('Ã°Å¸"Â', 'Session Tracking',
+          _step('"', 'Session Tracking',
               'Once inside, you can freely switch tabs without interruption. The timer only re-appears if you leave and come back.'),
           const SizedBox(height: 12),
-          _step('Ã¢ÂÂ°', '15-Minutes Usage Reminder',
-              'After your session limit, Lucid asks if you really want to keep scrolling - or do something better.'),
+          _step('', '15-Minutes Usage Reminder',
+              'After your session limit, Lucid asks if you really want to keep scrolling - or do something better.'),
         ],
       ),
     );
@@ -1900,9 +1937,9 @@ class _HowItWorksCard extends StatelessWidget {
   }
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ App Tile Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// """ App Tile """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-class _AppTile extends StatelessWidget {
+class _AppTile extends StatefulWidget {
   final String name;
   final String package;
   final bool enabled;
@@ -1915,19 +1952,47 @@ class _AppTile extends StatelessWidget {
     required this.onChanged,
   });
 
-  // Generate a consistent rainbow color from the starting letter of the app name!
+  @override
+  State<_AppTile> createState() => _AppTileState();
+}
+
+class _AppTileState extends State<_AppTile> {
+  bool _expanded = false;
+  int _customTimer = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTimer();
+  }
+
+  Future<void> _loadTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _customTimer = prefs.getInt('app_timer_${widget.package}') ?? 0;
+    });
+  }
+
+  Future<void> _setTimer(int val) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _customTimer = val);
+    if (val == 0) {
+      await prefs.remove('app_timer_${widget.package}');
+    } else {
+      await prefs.setInt('app_timer_${widget.package}', val);
+    }
+  }
+
   Color _colorFromName(String name) {
     if (name.isEmpty) return const Color(0xFFBB86FC);
     final firstChar = name.trim().toUpperCase();
     if (firstChar.isEmpty) return const Color(0xFFBB86FC);
     final code = firstChar.codeUnitAt(0);
-    // 'A' is 65, 'Z' is 90 -> map index 0..25 smoothly across the 360 degree rainbow color wheel!
     if (code >= 65 && code <= 90) {
       final index = code - 65;
       final hue = (index * (360.0 / 26.0)) % 360.0;
       return HSVColor.fromAHSV(1.0, hue, 0.75, 1.0).toColor();
     } else if (code >= 48 && code <= 57) {
-      // Numbers get a nice cyan spectrum
       final index = code - 48;
       final hue = (180.0 + index * 15.0) % 360.0;
       return HSVColor.fromAHSV(1.0, hue, 0.75, 1.0).toColor();
@@ -1937,8 +2002,8 @@ class _AppTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    final bgColor = _colorFromName(name);
+    final initial = widget.name.isNotEmpty ? widget.name[0].toUpperCase() : '?';
+    final bgColor = _colorFromName(widget.name);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
@@ -1946,56 +2011,117 @@ class _AppTile extends StatelessWidget {
         color: const Color(0xFF1C1C2E),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: enabled
+          color: widget.enabled
               ? const Color(0xFFBB86FC).withOpacity(0.4)
               : const Color(0xFF2A2A3E),
           width: 1,
         ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: bgColor.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: bgColor.withOpacity(0.4), width: 1),
-          ),
-          child: Center(
-            child: Text(
-              initial,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: bgColor,
+      child: Column(
+        children: [
+          ListTile(
+            onTap: widget.enabled ? () => setState(() => _expanded = !_expanded) : null,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: bgColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: bgColor.withOpacity(0.4), width: 1),
+              ),
+              child: Center(
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: bgColor,
+                  ),
+                ),
               ),
             ),
+            title: Text(widget.name,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15)),
+            trailing: Switch(
+              value: widget.enabled,
+              activeColor: const Color(0xFFBB86FC),
+              onChanged: widget.onChanged,
+            ),
           ),
-        ),
-        title: Text(name,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 15)),
-        trailing: Switch(
-          value: enabled,
-          activeColor: const Color(0xFFBB86FC),
-          onChanged: onChanged,
-        ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOutCubic,
+            child: (!widget.enabled || !_expanded) ? const SizedBox.shrink() : Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D0D1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBB86FC).withOpacity(0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Warning Timer',
+                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          _customTimer == 0 ? 'Global Default' : '$_customTimer mins',
+                          style: const TextStyle(color: Color(0xFFBB86FC), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: const Color(0xFFBB86FC),
+                        inactiveTrackColor: const Color(0xFF2A2A3E),
+                        thumbColor: Colors.white,
+                        overlayColor: const Color(0xFFBB86FC).withOpacity(0.2),
+                        trackHeight: 4,
+                      ),
+                      child: Slider(
+                        value: _customTimer.toDouble(),
+                        min: 0,
+                        max: 20,
+                        divisions: 20,
+                        onChanged: (val) {
+                          _setTimer(val.toInt());
+                        },
+                      ),
+                    ),
+                    const Text(
+                      'Drag to 0 to use the global warning timer.',
+                      style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 11),
+                    )
+                  ],
+                ),
+              ),
+            ),
+          )
+        ],
       ),
     );
   }
 }
 
-void _showBeautifulToast(BuildContext context, String message, String icon) {
+void _showBeautifulToast(BuildContext context, String message) {
   final overlay = Overlay.of(context);
   late OverlayEntry entry;
 
   entry = OverlayEntry(
     builder: (context) => _AnimatedToast(
       message: message,
-      icon: icon,
+      
       onDismiss: () => entry.remove(),
     ),
   );
@@ -2005,13 +2131,13 @@ void _showBeautifulToast(BuildContext context, String message, String icon) {
 
 class _AnimatedToast extends StatefulWidget {
   final String message;
-  final String icon;
+  
   final VoidCallback onDismiss;
 
   const _AnimatedToast({
     Key? key,
     required this.message,
-    required this.icon,
+    
     required this.onDismiss,
   }) : super(key: key);
 
@@ -2089,15 +2215,6 @@ class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProvide
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFBB86FC).withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(widget.icon, style: const TextStyle(fontSize: 20)),
-                ),
-                const SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     widget.message,

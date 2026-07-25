@@ -25,7 +25,7 @@ import android.widget.*
 
 class LucidAccessibilityService : AccessibilityService() {
 
-    // ─── State ────────────────────────────────────────────────────────────────
+    //  State 
 
     // Tracks the last *real* (non-ignored, non-recents) foreground package.
     // Never reset by recents/system-UI visits.
@@ -55,17 +55,32 @@ class LucidAccessibilityService : AccessibilityService() {
     private var audioFocusRequest: AudioFocusRequest? = null
 
     private fun getWarningIntervalMs(): Long {
-        val lucidPrefs = getSharedPreferences("LucidPrefs", Context.MODE_PRIVATE)
-        var mins = lucidPrefs.getInt("warning_interval_mins", -1)
+        val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        var mins = -1
+        
+        // 1. Try individual app timer first
+        val appTimerKey = "flutter.app_timer_" + currentApp
+        val appTimerRaw = flutterPrefs.all[appTimerKey]
+        if (appTimerRaw is Int && appTimerRaw > 0) {
+            mins = appTimerRaw
+        } else if (appTimerRaw is Long && appTimerRaw > 0) {
+            mins = appTimerRaw.toInt()
+        }
+        
+        // 2. Fall back to global warning timer if individual is not set
         if (mins <= 0) {
-            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val flutterRaw = flutterPrefs.all["flutter.warning_interval_mins"]
-            if (flutterRaw is Int && flutterRaw > 0) {
-                mins = flutterRaw
-            } else if (flutterRaw is Long && flutterRaw > 0) {
-                mins = flutterRaw.toInt()
+            val lucidPrefs = getSharedPreferences("LucidPrefs", Context.MODE_PRIVATE)
+            mins = lucidPrefs.getInt("warning_interval_mins", -1)
+            if (mins <= 0) {
+                val flutterRaw = flutterPrefs.all["flutter.warning_interval_mins"]
+                if (flutterRaw is Int && flutterRaw > 0) {
+                    mins = flutterRaw
+                } else if (flutterRaw is Long && flutterRaw > 0) {
+                    mins = flutterRaw.toInt()
+                }
             }
         }
+        
         if (mins <= 0) mins = 15
         return mins * 60 * 1000L
     }
@@ -153,7 +168,7 @@ class LucidAccessibilityService : AccessibilityService() {
             lowerPkg.contains("taskmanager") || lowerPkg.contains("launcher") || lowerPkg.contains("home") ||
             lowerPkg.contains("trebuchet") || lowerPkg.contains("quickstep")
 
-        // ── If an active session is running (not on loading/warning screen) ──
+        //  If an active session is running (not on loading/warning screen) 
         if (!isLoadingScreenActive && !isWarningScreenActive) {
             // Never ignore launcher or recents packages. This ensures that going to the home screen
             // or opening the recent apps menu properly ends the current session!
@@ -168,7 +183,7 @@ class LucidAccessibilityService : AccessibilityService() {
         return false
     }
 
-    // ─── Target Apps ─────────────────────────────────────────────────────────
+    //  Target Apps 
 
     private fun getTargetApps(): Set<String> {
         val lucidPrefs = getSharedPreferences("LucidPrefs", Context.MODE_PRIVATE)
@@ -188,7 +203,7 @@ class LucidAccessibilityService : AccessibilityService() {
         return lucidSet + flutterSet
     }
 
-    // ─── Lifecycle ────────────────────────────────────────────────────────────
+    //  Lifecycle 
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -196,7 +211,7 @@ class LucidAccessibilityService : AccessibilityService() {
         Log.d("Lucid", "Service connected")
     }
 
-    // ─── Event Routing ────────────────────────────────────────────────────────
+    //  Event Routing 
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
@@ -204,14 +219,14 @@ class LucidAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         val className = event.className?.toString()
 
-        // ── Always skip system UI, notification menu, recents, dialogs, keyboards ──
+        //  Always skip system UI, notification menu, recents, dialogs, keyboards 
         // IMPORTANT: notification shade and recents are ignored here, so opening
         // or closing them does NOT update currentApp or end an active session.
         if (isIgnoredPackage(pkg, className)) return
 
         val targets = getTargetApps()
 
-        // ── Skip duplicate same-package events (tab switches, dialogs, etc.) ─
+        //  Skip duplicate same-package events (tab switches, dialogs, etc.) 
         if (pkg == currentApp && currentApp.isNotEmpty()) {
             if (targets.contains(pkg)) {
                 // If the user clicked "Leave" and reopened lightning fast, the package might never have changed to Home.
@@ -228,7 +243,7 @@ class LucidAccessibilityService : AccessibilityService() {
         val prev = currentApp
         currentApp = pkg
 
-        // ── Leaving a target app → only end session if going to a REAL non-target app ─
+        //  Leaving a target app  only end session if going to a REAL non-target app 
         if (prev.isNotEmpty() && targets.contains(prev) && !targets.contains(currentApp)) {
             activeSessionApps.remove(prev)
             continueCountMap.remove(prev)
@@ -237,14 +252,14 @@ class LucidAccessibilityService : AccessibilityService() {
                 cancelAllAnimators()
                 removeLoadingScreen()
             }
-            Log.d("Lucid", "Left $prev → session ended (now at $currentApp)")
+            Log.d("Lucid", "Left $prev  session ended (now at $currentApp)")
         }
 
-        // ── Opened a target app ───────────────────────────────────────────────
+        //  Opened a target app 
         if (targets.contains(currentApp)) {
             if (activeSessionApps.contains(currentApp)) {
-                // User returned to this app mid-session — no timer
-                Log.d("Lucid", "Returned to $currentApp (active session) — no timer")
+                // User returned to this app mid-session  no timer
+                Log.d("Lucid", "Returned to $currentApp (active session)  no timer")
                 return
             }
             if (!isLoadingScreenActive && !isWarningScreenActive) {
@@ -254,7 +269,7 @@ class LucidAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ─── Audio Focus (pauses background audio) ────────────────────────────────
+    //  Audio Focus (pauses background audio) 
 
     private fun requestAudioFocus() {
         val am = audioManager ?: return
@@ -288,7 +303,7 @@ class LucidAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ─── Helper: Touch Scale Effect ───────────────────────────────────────────
+    //  Helper: Touch Scale Effect 
 
     private fun View.addTouchScaleEffect(scaleDown: Float = 0.96f) {
         setOnTouchListener { v, event ->
@@ -304,7 +319,7 @@ class LucidAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ─── Loading Screen ───────────────────────────────────────────────────────
+    //  Loading Screen 
 
     private fun showMindfulLoadingScreen() {
         if (overlayRoot != null) {
@@ -329,7 +344,7 @@ class LucidAccessibilityService : AccessibilityService() {
             packageManager.getApplicationLabel(info).toString()
         } catch (_: Exception) { "This App" }
 
-        // ── Root container with custom cosmic background & ambient glow ─────────
+        //  Root container with custom cosmic background & ambient glow 
         val root = object : FrameLayout(this) {
             private val bgPaint = Paint().apply { color = Color.parseColor("#050510") }
             private val glowPaintTop = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -363,14 +378,14 @@ class LucidAccessibilityService : AccessibilityService() {
             setWillNotDraw(false)
         }
 
-        // ── Center content layout ─────────────────────────────────────────────
+        //  Center content layout 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity     = Gravity.CENTER_HORIZONTAL
             setPadding((dp * 24).toInt(), (dp * 36).toInt(), (dp * 24).toInt(), (dp * 36).toInt())
         }
 
-        // ── App Title & Subtitle ──────────────────────────────────────────────
+        //  App Title & Subtitle 
         val titleTv = TextView(this).apply {
             text = "Opening $appLabel"
             setTextColor(Color.WHITE)
@@ -395,7 +410,7 @@ class LucidAccessibilityService : AccessibilityService() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // ── Breathing Orb & Progress Arc ──────────────────────────────────────
+        //  Breathing Orb & Progress Arc 
         val orbSizePx = (dp * 260).toInt()
         var arcProgress = 1f
         var breathingScale = 1.0f
@@ -493,7 +508,7 @@ class LucidAccessibilityService : AccessibilityService() {
             gravity = Gravity.CENTER_HORIZONTAL
         })
 
-        // ── Breathing Guidance & Seconds ──────────────────────────────────────
+        //  Breathing Guidance & Seconds 
         val secondsTv = TextView(this).apply {
             text = "60"
             setTextColor(Color.WHITE)
@@ -507,7 +522,7 @@ class LucidAccessibilityService : AccessibilityService() {
         ))
 
         val breathingGuidanceTv = TextView(this).apply {
-            text = "Inhale slowly and deeply... 🌬️"
+            text = "Inhale slowly and deeply... "
             setTextColor(Color.parseColor("#C4B5FD"))
             textSize = 13.5f
             gravity = Gravity.CENTER
@@ -520,12 +535,12 @@ class LucidAccessibilityService : AccessibilityService() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // ── Spacer ────────────────────────────────────────────────────────────
+        //  Spacer 
         content.addView(View(this), LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, (dp * 40).toInt()
         ))
 
-        // ── Leave Button (Glassmorphic & Gradient) ────────────────────────────
+        //  Leave Button (Glassmorphic & Gradient) 
         val goBackBtn = object : TextView(this) {
             private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#2A1225") }
             private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -542,7 +557,7 @@ class LucidAccessibilityService : AccessibilityService() {
                 super.onDraw(canvas)
             }
         }.apply {
-            text = "✨   Leave & Do Something Better"
+            text = "   Leave & Do Something Better"
             setTextColor(Color.parseColor("#FFE4E6"))
             textSize = 14.5f
             gravity = Gravity.CENTER
@@ -563,7 +578,7 @@ class LucidAccessibilityService : AccessibilityService() {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { setMargins((dp * 8).toInt(), 0, (dp * 8).toInt(), 0) })
 
-        // ── Wrap in centered layout ───────────────────────────────────────────
+        //  Wrap in centered layout 
         val wrapper = FrameLayout(this)
         val wrapLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -576,7 +591,7 @@ class LucidAccessibilityService : AccessibilityService() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        // ── Window params ─────────────────────────────────────────────────────
+        //  Window params 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -592,7 +607,7 @@ class LucidAccessibilityService : AccessibilityService() {
         root.alpha = 0f
         root.animate().alpha(1f).setDuration(450).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
 
-        // ── Breathing Pulse Animator (4s Inhale, 4s Exhale) ───────────────────
+        //  Breathing Pulse Animator (4s Inhale, 4s Exhale) 
         val breathAnimator = ValueAnimator.ofFloat(1.0f, 1.12f).apply {
             duration = 4000L
             repeatMode = ValueAnimator.REVERSE
@@ -606,7 +621,7 @@ class LucidAccessibilityService : AccessibilityService() {
         breathAnimator.start()
         activeAnimators.add(breathAnimator)
 
-        // ── Smooth Arc Progress Animator (for silky arc sweep) ────────────────
+        //  Smooth Arc Progress Animator (for silky arc sweep) 
         val arcAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
             duration = totalMs
             interpolator = android.view.animation.LinearInterpolator()
@@ -618,14 +633,14 @@ class LucidAccessibilityService : AccessibilityService() {
         arcAnimator.start()
         activeAnimators.add(arcAnimator)
 
-        // ── Countdown timer (text updates only — arc is handled by arcAnimator) ─
+        //  Countdown timer (text updates only  arc is handled by arcAnimator) 
         val breathingMessages = arrayOf(
-            "Inhale slowly and deeply... 🌬️",
-            "Exhale and release tension... 🍃",
-            "Notice how you feel right now... ✨",
-            "Is this app what you truly need? 💭",
-            "Inhale calm, exhale impulse... 🌊",
-            "You are in control of your time... ⏳"
+            "Inhale slowly and deeply... ",
+            "Exhale and release tension... ",
+            "Notice how you feel right now... ",
+            "Is this app what you truly need? ",
+            "Inhale calm, exhale impulse... ",
+            "You are in control of your time... "
         )
         countdownTimer = object : CountDownTimer(totalMs, 1000) {
             override fun onTick(millisUntilFinished: Long) {
@@ -670,7 +685,7 @@ class LucidAccessibilityService : AccessibilityService() {
             }).start()
     }
 
-    // ─── Usage Warning (fires at WARNING_INTERVAL_MS) ─────────────────────────
+    //  Usage Warning (fires at WARNING_INTERVAL_MS) 
 
     private fun startUsageTimer() {
         stopUsageTimer()
@@ -825,7 +840,7 @@ class LucidAccessibilityService : AccessibilityService() {
                 super.onDraw(c)
             }
         }.apply {
-            text = "⏳   You've spent $label in $appLabel"
+            text = "   You've spent $label in $appLabel"
             setTextColor(Color.parseColor("#F0ABFC"))
             textSize = 13f; gravity = Gravity.CENTER
             setTypeface(Typeface.DEFAULT_BOLD)
@@ -860,7 +875,7 @@ class LucidAccessibilityService : AccessibilityService() {
                 super.onDraw(c)
             }
         }.apply {
-            text = "✓   Yes, Let's Take a Break"
+            text = "   Yes, Let's Take a Break"
             setTextColor(Color.WHITE)
             textSize = 16f; gravity = Gravity.CENTER
             setTypeface(Typeface.DEFAULT_BOLD)
@@ -878,7 +893,7 @@ class LucidAccessibilityService : AccessibilityService() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = (dp * 12).toInt() })
 
-        // Secondary Action Button (Ghost / Dark) — only shown on first warning per session
+        // Secondary Action Button (Ghost / Dark)  only shown on first warning per session
         val appContinueCount = continueCountMap.getOrDefault(currentApp, 0)
         if (appContinueCount < 1) {
             val continueBtn = object : TextView(this) {
@@ -895,7 +910,7 @@ class LucidAccessibilityService : AccessibilityService() {
                     super.onDraw(c)
                 }
             }.apply {
-                text = "Continue for now →"
+                text = "Continue for now "
                 setTextColor(Color.parseColor("#94A3B8"))
                 textSize = 14f; gravity = Gravity.CENTER
                 setTypeface(Typeface.DEFAULT_BOLD)
@@ -948,7 +963,7 @@ class LucidAccessibilityService : AccessibilityService() {
             }).start()
     }
 
-    // ─── Cleanup ──────────────────────────────────────────────────────────────
+    //  Cleanup 
 
     override fun onInterrupt() {
         cancelAllAnimators()
