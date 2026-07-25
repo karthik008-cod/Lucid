@@ -46,7 +46,7 @@ class LucidApp extends StatelessWidget {
             colorScheme: const ColorScheme.dark(
               primary: Color(0xFFBB86FC),
               secondary: Color(0xFF03DAC6),
-              surface: Color(0xFF1C1C2E),
+              surface: Theme.of(context).colorScheme.surface,
             ),
           ),
           home: const _AppEntry(),
@@ -300,7 +300,7 @@ class _SplashScreenState extends State<_SplashScreen>
                     style: TextStyle(
                       fontSize: fontSize,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onSurface,
                       letterSpacing: ui.lerpDouble(1.0, 1.2, tVal)!,
                     ),
                   ),
@@ -394,6 +394,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   bool _accessibilityGranted = false;
   bool _usageGranted = false;
+  bool _restrictedSettingsGranted = false;
   int _warningMins = 15;
 
   @override
@@ -465,10 +466,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
     } catch (_) {}
 
+    final prefs = await SharedPreferences.getInstance();
+    final rsClicked = prefs.getBool('restricted_settings_granted') ?? false;
+
     if (mounted) {
       setState(() {
         _usageGranted = usageOk;
         _accessibilityGranted = accessOk;
+        _restrictedSettingsGranted = accessOk || rsClicked;
       });
     }
   }
@@ -477,6 +482,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (mounted) {
       _showBeautifulToast(context, 'Opening App Info... Please allow restricted settings.');
     }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('restricted_settings_granted', true);
+    setState(() => _restrictedSettingsGranted = true);
     try {
       await _channel.invokeMethod('openAppInfo');
     } catch (_) {}
@@ -544,7 +552,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   radius: 1.4,
                   colors: [
                     Color(0xFF1A0A2E),
-                    Color(0xFF0D0D1A),
+                    Theme.of(context).scaffoldBackgroundColor,
                     Color(0xFF060610)
                   ],
                   stops: [0, 0.55, 1],
@@ -604,7 +612,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               style: TextStyle(
                                 fontSize: 30,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onSurface,
                                 letterSpacing: 0.5,
                               ),
                               textAlign: TextAlign.center,
@@ -617,7 +625,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         'Three quick permissions and you\'re set.\nLucid needs these to guard your attention.',
                         style: TextStyle(
                           fontSize: 15,
-                          color: Color(0xFF9E9E9E),
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                           height: 1.6,
                         ),
                         textAlign: TextAlign.center,
@@ -629,7 +637,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         title: 'Allow Restricted Settings',
                         description:
                             'If the Accessibility toggle is greyed out in settings, return here, tap "Open App Info", tap the top-right  menu and select "Allow restricted settings". If you don\'t see it, you can skip this step!',
-                        granted: _accessibilityGranted,
+                        granted: _restrictedSettingsGranted,
                         onGrant: _openAppInfo,
                         grantLabel: 'Open App Info',
                       ),
@@ -707,7 +715,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  color: Theme.of(context).colorScheme.onSurface,
                                   letterSpacing: 0.3,
                                 ),
                                 textAlign: TextAlign.center,
@@ -827,7 +835,7 @@ class _PermissionCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(description,
                     style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF9E9E9E), height: 1.4)),
+                        fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), height: 1.4)),
                 if (!granted) ...[
                   const SizedBox(height: 12),
                   GestureDetector(
@@ -844,7 +852,7 @@ class _PermissionCard extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                              color: Theme.of(context).colorScheme.onSurface)),
                     ),
                   ),
                 ],
@@ -1020,7 +1028,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 child: Padding(
                   padding: const EdgeInsets.all(2.0),
                   child: Material(
-                    color: bg ?? const Color(0xFF2A2A3E),
+                    color: bg ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(8),
@@ -1063,7 +1071,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             final row3 = ['s', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'DEL'];
 
             return Dialog(
-              backgroundColor: const Color(0xFF1C1C2E),
+              backgroundColor: Theme.of(context).colorScheme.surface,
               insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(24),
@@ -1082,14 +1090,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         shape: BoxShape.circle,
                       ),
                       child: const Center(
-                        child: const Icon(Icons.shield, size: 26, color: Colors.white),
+                        child: Icon(Icons.shield, size: 26, color: Theme.of(context).colorScheme.onSurface),
                       ),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'Unbind "$appName"?',
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -1110,7 +1118,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0D0D1A),
+                        color: Theme.of(context).scaffoldBackgroundColor,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0x4DBB86FC)),
                       ),
@@ -1131,7 +1139,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0D0D1A),
+                        color: Theme.of(context).scaffoldBackgroundColor,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isMatch
@@ -1185,7 +1193,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           Row(
                             children: [
                               buildKey('Space',
-                                  flex: 3, bg: const Color(0xFF2A2A3E)),
+                                  flex: 3, bg: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
                               buildKey('Clear',
                                   flex: 1,
                                   bg: const Color(0xFF3A3A52),
@@ -1228,7 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             backgroundColor: isMatch
                                 ? const Color(0xCCCF4444)
-                                : const Color(0xFF2A2A3E),
+                                : Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -1328,26 +1336,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                           letterSpacing: 1.2)),
                                   const Text('Mindful Screen Time',
                                       style: TextStyle(
-                                          fontSize: 12, color: Color(0xFF9E9E9E))),
+                                          fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
                                 ],
                               ),
                               const Spacer(),
-                              ValueListenableBuilder<ThemeMode>(
-                                valueListenable: themeNotifier,
-                                builder: (_, mode, __) {
-                                  final isDark = mode == ThemeMode.dark;
-                                  return IconButton(
-                                    icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
-                                    color: Theme.of(context).colorScheme.onSurface,
-                                    onPressed: () async {
-                                      final prefs = await SharedPreferences.getInstance();
-                                      final newTheme = isDark ? ThemeMode.light : ThemeMode.dark;
-                                      themeNotifier.value = newTheme;
-                                      await prefs.setBool('is_dark_theme', !isDark);
-                                    },
-                                  );
-                                }
-                              ),
+                              const _ThemeToggle(),
                             ],
                           ),
                         ),
@@ -1383,14 +1376,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
                         child: TextField(
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search installed apps...',
                             hintStyle: const TextStyle(color: Color(0xFF616161)),
                             prefixIcon:
-                                const Icon(Icons.search, color: Color(0xFF9E9E9E)),
+                                Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                             filled: true,
-                            fillColor: const Color(0xFF1C1C2E),
+                            fillColor: Theme.of(context).colorScheme.surface,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
                               borderSide: BorderSide.none,
@@ -1485,7 +1478,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                   'Loading installed apps...',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: Color(0xFF9E9E9E),
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                   ),
                                 ),
                               ],
@@ -1507,19 +1500,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1C1C2E),
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text('${otherApps.length} apps',
                                   style: const TextStyle(
-                                      fontSize: 12, color: Color(0xFF9E9E9E))),
+                                      fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
                             ),
                           ],
                         ),
@@ -1643,7 +1636,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C2E),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: const Color(0xFFBB86FC).withOpacity(0.3),
@@ -1675,7 +1668,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1683,7 +1676,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                       'Alert after ${widget.intervalMins} min${widget.intervalMins == 1 ? "" : "s"} in a monitored app',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF9E9E9E),
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -1699,7 +1692,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                   controller: _ctrl,
                   keyboardType: TextInputType.number,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1713,11 +1706,11 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                     ),
                     suffixText: 'mins',
                     suffixStyle: const TextStyle(
-                      color: Color(0xFF9E9E9E),
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                       fontSize: 13,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF0D0D1A),
+                    fillColor: Theme.of(context).scaffoldBackgroundColor,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -1757,7 +1750,7 @@ class _StatusCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1C1C2E), Color(0xFF16213E)],
+          colors: [Theme.of(context).colorScheme.surface, Theme.of(context).scaffoldBackgroundColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1822,7 +1815,7 @@ class _StatusCard extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
@@ -1833,7 +1826,7 @@ class _StatusCard extends StatelessWidget {
                   : 'Enable the Accessibility Service so Lucid can intercept target apps.',
               style: const TextStyle(
                 fontSize: 14,
-                color: Color(0xFF9E9E9E),
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 height: 1.5,
               ),
             ),
@@ -1862,7 +1855,7 @@ class _StatusCard extends StatelessWidget {
                 'Settings  Accessibility  Downloaded Apps  Lucid',
                 style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF9E9E9E),
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                     fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
@@ -1876,66 +1869,7 @@ class _StatusCard extends StatelessWidget {
 
 // """ How It Works Card """"""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-class _HowItWorksCard extends StatelessWidget {
-  const _HowItWorksCard();
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111122),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A3E), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('How Lucid Works',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFBB86FC))),
-          const SizedBox(height: 16),
-          _step('', '60-Second Mindful Pause',
-              'When you open a monitored app, a beautiful animated timer overlay appears. It vanishes once 60 seconds pass.'),
-          const SizedBox(height: 12),
-          _step('"', 'Session Tracking',
-              'Once inside, you can freely switch tabs without interruption. The timer only re-appears if you leave and come back.'),
-          const SizedBox(height: 12),
-          _step('', '15-Minutes Usage Reminder',
-              'After your session limit, Lucid asks if you really want to keep scrolling - or do something better.'),
-        ],
-      ),
-    );
-  }
-
-  Widget _step(String emoji, String title, String body) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 22)),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
-              const SizedBox(height: 4),
-              Text(body,
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF9E9E9E), height: 1.4)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 // """ App Tile """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
@@ -2008,12 +1942,12 @@ class _AppTileState extends State<_AppTile> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C2E),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: widget.enabled
               ? const Color(0xFFBB86FC).withOpacity(0.4)
-              : const Color(0xFF2A2A3E),
+              : Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
           width: 1,
         ),
       ),
@@ -2043,7 +1977,7 @@ class _AppTileState extends State<_AppTile> {
             ),
             title: Text(widget.name,
                 style: const TextStyle(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                     fontSize: 15)),
             trailing: Switch(
@@ -2060,7 +1994,7 @@ class _AppTileState extends State<_AppTile> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0D0D1A),
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFBB86FC).withOpacity(0.2)),
                 ),
@@ -2072,7 +2006,7 @@ class _AppTileState extends State<_AppTile> {
                       children: [
                         const Text(
                           'Warning Timer',
-                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           _customTimer == 0 ? 'Global Default' : '$_customTimer mins',
@@ -2084,7 +2018,7 @@ class _AppTileState extends State<_AppTile> {
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         activeTrackColor: const Color(0xFFBB86FC),
-                        inactiveTrackColor: const Color(0xFF2A2A3E),
+                        inactiveTrackColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                         thumbColor: Colors.white,
                         overlayColor: const Color(0xFFBB86FC).withOpacity(0.2),
                         trackHeight: 4,
@@ -2101,7 +2035,7 @@ class _AppTileState extends State<_AppTile> {
                     ),
                     const Text(
                       'Drag to 0 to use the global warning timer.',
-                      style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 11),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: 11),
                     )
                   ],
                 ),
@@ -2219,7 +2153,7 @@ class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProvide
                   child: Text(
                     widget.message,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.3,
@@ -2238,3 +2172,58 @@ class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProvide
 
 
 
+
+class _ThemeToggle extends StatelessWidget {
+  const _ThemeToggle();
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, mode, child) {
+        final isDark = mode == ThemeMode.dark;
+        return GestureDetector(
+          onTap: () async {
+            final prefs = await SharedPreferences.getInstance();
+            final newTheme = isDark ? ThemeMode.light : ThemeMode.dark;
+            themeNotifier.value = newTheme;
+            await prefs.setBool('is_dark_theme', !isDark);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 56,
+            height: 32,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: isDark ? const Color(0xFF161622) : const Color(0xFFE0E0E0),
+              border: Border.all(
+                color: isDark ? const Color(0xFFBB86FC).withOpacity(0.5) : Colors.grey.shade400,
+              ),
+            ),
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  top: 3,
+                  left: isDark ? 27 : 3,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, anim) => RotationTransition(
+                      turns: child.key == const ValueKey('moon') 
+                          ? Tween<double>(begin: 0.5, end: 1).animate(anim)
+                          : Tween<double>(begin: 0.5, end: 1).animate(anim),
+                      child: ScaleTransition(scale: anim, child: child),
+                    ),
+                    child: isDark 
+                        ? const Icon(Icons.nightlight_round, key: ValueKey('moon'), size: 22, color: Color(0xFFBB86FC))
+                        : const Icon(Icons.wb_sunny_rounded, key: ValueKey('sun'), size: 22, color: Colors.orange),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
