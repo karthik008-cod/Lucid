@@ -16,6 +16,7 @@ dependencies:
   url_launcher: ^6.3.0
   shared_preferences: ^2.2.2
   installed_apps: ^1.6.0
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:

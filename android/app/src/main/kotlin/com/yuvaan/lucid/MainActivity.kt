@@ -64,6 +64,11 @@ class MainActivity: FlutterActivity() {
 					val isEnabled = enabledServicesSetting.contains(expectedComponentName.flattenToString()) || enabledServicesSetting.contains(expectedComponentName.flattenToShortString())
 					result.success(isEnabled)
 				}
+				"isUsageAccessEnabled" -> {
+					val appOps = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+					val mode = appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+					result.success(mode == android.app.AppOpsManager.MODE_ALLOWED)
+				}
 				else -> result.notImplemented()
 			}
 		}
