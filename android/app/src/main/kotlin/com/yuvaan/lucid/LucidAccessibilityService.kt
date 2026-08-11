@@ -54,6 +54,9 @@ class LucidAccessibilityService : AccessibilityService() {
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    // Daily Limit Tracking
+    private lateinit var dailyLimitManager: DailyLimitManager
+
     private fun getWarningIntervalMs(): Long {
         val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         var mins = -1
@@ -208,6 +211,7 @@ class LucidAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        dailyLimitManager = DailyLimitManager(this)
         Log.d("Lucid", "Service connected")
     }
 
@@ -248,9 +252,13 @@ class LucidAccessibilityService : AccessibilityService() {
             activeSessionApps.remove(prev)
             continueCountMap.remove(prev)
             stopUsageTimer()
+            dailyLimitManager.recordSessionEnd(prev)
             if (isLoadingScreenActive || overlayRoot != null) {
                 cancelAllAnimators()
                 removeLoadingScreen()
+            }
+            if (dailyLimitManager.isShowingLimitScreen()) {
+                dailyLimitManager.removeScreen()
             }
             Log.d("Lucid", "Left $prev  session ended (now at $currentApp)")
         }
@@ -262,9 +270,20 @@ class LucidAccessibilityService : AccessibilityService() {
                 Log.d("Lucid", "Returned to $currentApp (active session)  no timer")
                 return
             }
-            if (!isLoadingScreenActive && !isWarningScreenActive) {
+            if (!isLoadingScreenActive && !isWarningScreenActive && !dailyLimitManager.isShowingLimitScreen()) {
                 stopUsageTimer()
-                showMindfulLoadingScreen()
+                
+                if (dailyLimitManager.hasExceededDailyLimit(currentApp)) {
+                    dailyLimitManager.showDailyLimitScreen(currentApp) {
+                        activeSessionApps.remove(currentApp)
+                        continueCountMap.remove(currentApp)
+                        dailyLimitManager.recordSessionEnd(currentApp)
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                    }
+                } else {
+                    dailyLimitManager.recordSessionStart(currentApp)
+                    showMindfulLoadingScreen()
+                }
             }
         }
     }
@@ -570,6 +589,7 @@ class LucidAccessibilityService : AccessibilityService() {
                   continueCountMap.remove(currentApp)
                   cancelAllAnimators()
                   removeLoadingScreen()
+                  dailyLimitManager.recordSessionEnd(currentApp)
                   performGlobalAction(GLOBAL_ACTION_HOME)
               }
           }
@@ -600,7 +620,11 @@ class LucidAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
-        windowManager?.addView(root, params)
+        try {
+            windowManager?.addView(root, params)
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error adding loading screen overlay", e)
+        }
         overlayRoot = root
 
         // Fade-in animation
@@ -886,6 +910,7 @@ class LucidAccessibilityService : AccessibilityService() {
                   continueCountMap.remove(currentApp)
                   stopUsageTimer()
                   removeWarningOverlay()
+                  dailyLimitManager.recordSessionEnd(currentApp)
                   performGlobalAction(GLOBAL_ACTION_HOME)
               }
           }
@@ -942,7 +967,11 @@ class LucidAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
-        windowManager?.addView(root, wParams)
+        try {
+            windowManager?.addView(root, wParams)
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error adding warning overlay", e)
+        }
         warningRoot = root
 
         root.alpha = 0f
@@ -971,6 +1000,9 @@ class LucidAccessibilityService : AccessibilityService() {
         removeWarningOverlay()
         stopUsageTimer()
         releaseAudioFocus()
+        if (::dailyLimitManager.isInitialized) {
+            dailyLimitManager.cleanup()
+        }
     }
 
     override fun onDestroy() {
@@ -982,5 +1014,8 @@ class LucidAccessibilityService : AccessibilityService() {
         activeSessionApps.clear()
         continueCountMap.clear()
         releaseAudioFocus()
+        if (::dailyLimitManager.isInitialized) {
+            dailyLimitManager.cleanup()
+        }
     }
 }

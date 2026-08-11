@@ -921,9 +921,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         _loadWarningInterval();
         _loadInstalledApps().then((_) {
           _loadSavedApps();
+          _checkYesterdaySuccess();
         });
       }
     });
+  }
+
+  Future<void> _checkYesterdaySuccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    final todayStr = DateTime.now().toIso8601String().split('T').first;
+    final lastCelebrated = prefs.getString('last_celebrated_date') ?? "";
+    
+    if (lastCelebrated == todayStr) return;
+    
+    final yesterdayStr = DateTime.now().subtract(Duration(days: 1)).toIso8601String().split('T').first;
+    bool hadSuccess = false;
+    
+    final keys = prefs.getKeys();
+    for (var key in keys) {
+      if (key.startsWith('daily_limit_')) {
+        final pkg = key.substring('daily_limit_'.length);
+        final limit = prefs.getInt(key) ?? 0;
+        if (limit > 0) {
+          final usageDate = prefs.getString('usage_date_$pkg');
+          final usageMs = prefs.getInt('usage_total_ms_$pkg') ?? 0;
+          if (usageDate == yesterdayStr) {
+             final usageMins = (usageMs / 60000).floor();
+             if (usageMins <= limit) {
+                hadSuccess = true;
+                break;
+             }
+          }
+        }
+      }
+    }
+    
+    if (hadSuccess) {
+       await prefs.setString('last_celebrated_date', todayStr);
+       if (mounted) {
+          _showBeautifulToast(context, '🎉 You stayed within your limits yesterday. Great job!');
+       }
+    } else {
+       await prefs.setString('last_celebrated_date', todayStr);
+    }
   }
 
   @override
@@ -1933,6 +1973,10 @@ class _AppTile extends StatefulWidget {
 class _AppTileState extends State<_AppTile> {
   bool _expanded = false;
   int _customTimer = 0;
+  int _dailyLimit = 0;
+  int _savedDailyLimit = 0;
+  int _usageMs = 0;
+  String _usageDate = "";
 
   @override
   void initState() {
@@ -1944,6 +1988,10 @@ class _AppTileState extends State<_AppTile> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _customTimer = prefs.getInt('app_timer_${widget.package}') ?? 0;
+      _dailyLimit = prefs.getInt('daily_limit_${widget.package}') ?? 0;
+      _savedDailyLimit = _dailyLimit;
+      _usageMs = prefs.getInt('usage_total_ms_${widget.package}') ?? 0;
+      _usageDate = prefs.getString('usage_date_${widget.package}') ?? "";
     });
   }
 
@@ -1954,6 +2002,49 @@ class _AppTileState extends State<_AppTile> {
       await prefs.remove('app_timer_${widget.package}');
     } else {
       await prefs.setInt('app_timer_${widget.package}', val);
+    }
+  }
+
+  Future<void> _setDailyLimit(int val) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _dailyLimit = val;
+      _savedDailyLimit = val;
+    });
+    if (val == 0) {
+      await prefs.remove('daily_limit_${widget.package}');
+    } else {
+      await prefs.setInt('daily_limit_${widget.package}', val);
+    }
+  }
+
+  Future<void> _confirmAndSetDailyLimit(int val) async {
+    // If decreasing the limit, or turning it on from no limit, save immediately
+    if (val < _savedDailyLimit && val != 0 || _savedDailyLimit == 0 && val != 0) {
+      await _setDailyLimit(val);
+      return;
+    }
+    
+    // If increasing limit or removing limit (val == 0), add friction
+    if (val > _savedDailyLimit || val == 0) {
+      bool? confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _FrictionDialog(
+          title: val == 0 ? 'Disable Daily Limit?' : 'Increase Limit to $val mins?',
+          message: 'Are you sure you want to give yourself more time in this app? Take a moment to reflect.',
+          waitSeconds: 30,
+        ),
+      );
+
+      if (confirmed == true) {
+        await _setDailyLimit(val);
+      } else {
+        // Revert
+        setState(() {
+          _dailyLimit = _savedDailyLimit;
+        });
+      }
     }
   }
 
@@ -2082,7 +2173,90 @@ class _AppTileState extends State<_AppTile> {
                     Text(
                       'Drag to 0 to use the global warning timer.',
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11),
-                    )
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Daily App Limit',
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          _dailyLimit == 0 ? 'No Limit' : '$_dailyLimit mins',
+                          style: TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: Color(0xFF38BDF8),
+                        inactiveTrackColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+                        thumbColor: Colors.white,
+                        overlayColor: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                        trackHeight: 4,
+                      ),
+                      child: Slider(
+                        value: _dailyLimit.toDouble(),
+                        min: 0,
+                        max: 180,
+                        divisions: 36,
+                        onChanged: (val) {
+                          setState(() { _dailyLimit = val.toInt(); });
+                        },
+                        onChangeEnd: (val) {
+                          _confirmAndSetDailyLimit(val.toInt());
+                        },
+                      ),
+                    ),
+                    Text(
+                      'Drag to 0 to disable daily limit.',
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 11),
+                    ),
+                    if (_dailyLimit > 0) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Builder(
+                          builder: (context) {
+                            final todayStr = DateTime.now().toIso8601String().split('T').first;
+                            final usageMins = _usageDate == todayStr ? (_usageMs / 60000).floor() : 0;
+                            final remainingMins = _dailyLimit - usageMins;
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                Column(
+                                  children: [
+                                    Text('Today\'s Usage', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
+                                    SizedBox(height: 4),
+                                    Text('$usageMins min', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+                                  ],
+                                ),
+                                Column(
+                                  children: [
+                                    Text('Limit', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
+                                    SizedBox(height: 4),
+                                    Text('$_dailyLimit min', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+                                  ],
+                                ),
+                                Column(
+                                  children: [
+                                    Text('Remaining', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
+                                    SizedBox(height: 4),
+                                    Text('${remainingMins > 0 ? remainingMins : 0} min', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: remainingMins > 0 ? Color(0xFF4CAF50) : Color(0xFFFF6B6B))),
+                                  ],
+                                ),
+                              ],
+                            );
+                          }
+                        ),
+                      )
+                    ]
                   ],
                 ),
               ),
@@ -2273,6 +2447,100 @@ class _ThemeToggle extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _FrictionDialog extends StatefulWidget {
+  final String title;
+  final String message;
+  final int waitSeconds;
+
+  const _FrictionDialog({
+    Key? key,
+    required this.title,
+    required this.message,
+    required this.waitSeconds,
+  }) : super(key: key);
+
+  @override
+  State<_FrictionDialog> createState() => _FrictionDialogState();
+}
+
+class _FrictionDialogState extends State<_FrictionDialog> {
+  late int _timeLeft;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timeLeft = widget.waitSeconds;
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_timeLeft > 0) {
+        setState(() {
+          _timeLeft--;
+        });
+      } else {
+        _timer?.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool canConfirm = _timeLeft == 0;
+    
+    return AlertDialog(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        widget.title,
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.message,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8), fontSize: 15),
+          ),
+          const SizedBox(height: 24),
+          if (!canConfirm)
+            Text(
+              '$_timeLeft',
+              style: TextStyle(
+                fontSize: 48,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFFBB86FC),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text('Cancel', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+        ),
+        ElevatedButton(
+          onPressed: canConfirm ? () => Navigator.of(context).pop(true) : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFBB86FC),
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFFBB86FC).withValues(alpha: 0.2),
+          ),
+          child: Text('Confirm'),
+        ),
+      ],
     );
   }
 }
