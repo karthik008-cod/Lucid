@@ -5,7 +5,16 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.*
 import android.graphics.drawable.Drawable
 import android.media.AudioAttributes
@@ -15,8 +24,10 @@ import android.os.Build
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -24,6 +35,15 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.*
 
 class LucidAccessibilityService : AccessibilityService() {
+
+    companion object {
+        @Volatile
+        var isServiceRunning: Boolean = false
+            private set
+        @Volatile
+        var lastHeartbeatMs: Long = 0L
+            private set
+    }
 
     //  State 
 
@@ -54,43 +74,79 @@ class LucidAccessibilityService : AccessibilityService() {
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    // System Event Receiver for Screen Off and Incoming Calls
+    private var systemEventReceiver: BroadcastReceiver? = null
+    private var isSystemReceiverRegistered = false
+
     // Daily Limit Tracking
     private lateinit var dailyLimitManager: DailyLimitManager
 
-    private fun getWarningIntervalMs(): Long {
-        val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        var mins = -1
-        
-        // 1. Try individual app timer first
-        val appTimerKey = "flutter.app_timer_" + currentApp
-        val appTimerRaw = flutterPrefs.all[appTimerKey]
-        if (appTimerRaw is Int && appTimerRaw > 0) {
-            mins = appTimerRaw
-        } else if (appTimerRaw is Long && appTimerRaw > 0) {
-            mins = appTimerRaw.toInt()
+    // Service health heartbeat
+    private val healthCheckHandler = Handler(Looper.getMainLooper())
+    private val healthCheckRunnable = object : Runnable {
+        override fun run() {
+            try {
+                lastHeartbeatMs = System.currentTimeMillis()
+                Log.d("Lucid", "Heartbeat: alive=true, currentApp='$currentApp', activeSessions=$activeSessionApps, loadingActive=$isLoadingScreenActive, warningActive=$isWarningScreenActive")
+            } catch (e: Exception) {
+                Log.e("Lucid", "Error in heartbeat", e)
+            }
+            healthCheckHandler.postDelayed(this, 30000)
         }
-        
-        // 2. Fall back to global warning timer if individual is not set
-        if (mins <= 0) {
+    }
+
+    private fun parseMins(raw: Any?): Int {
+        return when (raw) {
+            is Number -> raw.toInt()
+            is String -> raw.toIntOrNull() ?: -1
+            else -> -1
+        }
+    }
+
+    private fun getWarningIntervalMs(): Long {
+        return try {
+            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val lucidPrefs = getSharedPreferences("LucidPrefs", Context.MODE_PRIVATE)
-            mins = lucidPrefs.getInt("warning_interval_mins", -1)
-            if (mins <= 0) {
-                val flutterRaw = flutterPrefs.all["flutter.warning_interval_mins"]
-                if (flutterRaw is Int && flutterRaw > 0) {
-                    mins = flutterRaw
-                } else if (flutterRaw is Long && flutterRaw > 0) {
-                    mins = flutterRaw.toInt()
+            var mins = -1
+
+            // 1. Try individual app timer first (both Flutter and Lucid prefs)
+            if (currentApp.isNotEmpty()) {
+                val rawApp = flutterPrefs.all["flutter.app_timer_$currentApp"]
+                    ?: lucidPrefs.all["app_timer_$currentApp"]
+                val parsed = parseMins(rawApp)
+                if (parsed > 0) {
+                    mins = parsed
+                    Log.d("Lucid", "Found per-app timer for $currentApp: $mins mins")
                 }
             }
+
+            // 2. Fall back to global warning timer if individual is not set
+            if (mins <= 0) {
+                val rawLucid = lucidPrefs.all["warning_interval_mins"]
+                mins = parseMins(rawLucid)
+            }
+            if (mins <= 0) {
+                val rawFlutter = flutterPrefs.all["flutter.warning_interval_mins"]
+                mins = parseMins(rawFlutter)
+            }
+
+            if (mins <= 0) {
+                mins = 15
+                Log.d("Lucid", "Using default warning interval: 15 mins")
+            } else {
+                Log.d("Lucid", "Resolved warning interval for $currentApp: $mins mins")
+            }
+
+            mins * 60 * 1000L
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error calculating warning interval, defaulting to 15 mins", e)
+            15 * 60 * 1000L
         }
-        
-        if (mins <= 0) mins = 15
-        return mins * 60 * 1000L
     }
 
     // Packages that must NEVER trigger the timer or be treated as "leaving" a target app.
-    private val ignoredPackages = mutableSetOf(
-        // System UI / Overlays / Screenshot
+    private val ignoredPackages = setOf(
+        // System UI / Overlays / Screenshot / Status Bar / Quick Settings
         "com.android.systemui",
         "com.miui.systemui",
         "com.miui.securitycenter",
@@ -98,193 +154,461 @@ class LucidAccessibilityService : AccessibilityService() {
         "com.miui.screenshot",
         "com.miui.notification",
         "com.miui.statusbar",
+        "com.miui.screenrecorder",
+        "com.miui.powerkeeper",
+        "com.miui.securityadd",
+        "com.miui.cleanmaster",
+        "com.xiaomi.misettings",
         "com.samsung.android.app.cocktailbarservice",
         "com.samsung.android.quickpanel",
         "com.samsung.android.biometrics.app.setting",
         "com.samsung.android.sm.devicesecurity",
-        "com.samsung.android.app.routine",
-        "com.samsung.android.forest",
-        "com.samsung.android.rubin.app",
         "com.samsung.android.incallui",
         "com.oplus.notification",
         "com.oplus.systemui",
         "com.oplus.qs",
-        "com.google.android.gms",
-        "com.google.android.googlequicksearchbox",
+        "com.oplus.screenrecorder",
+        // Audio / Volume / Sound overlays
+        "com.miui.audio",
+        "com.xiaomi.audio",
+        "com.miui.voiceassist",
+        "com.miui.soundrecorder",
+        "com.google.android.soundpicker",
+        "com.sec.android.app.soundalive",
+        "com.samsung.android.soundassistant",
+        // Telephony / In-Call UI
+        "com.android.server.telecom",
+        "com.android.phone",
+        "com.android.incallui",
+        "com.google.android.dialer",
+        // Common Input Methods (keyboards)
+        "com.google.android.inputmethod.latin",
+        "com.samsung.android.honeyboard",
+        "com.touchtype.swiftkey",
         // Common system overlays / permission dialogs
         "com.android.permissioncontroller",
         "com.google.android.permissioncontroller",
-        "android"
+        "com.google.android.gms"
     )
 
     private fun isIgnoredPackage(pkg: String, className: String?): Boolean {
         if (pkg == packageName) return true // ignore Lucid itself
-        if (pkg == "android") return true   // ignore system server / audio
+        if (pkg == "android") return true   // ignore system server / framework
+
+        if (ignoredPackages.contains(pkg)) return true
 
         val lowerPkg = pkg.lowercase()
         val lowerClass = className?.lowercase() ?: ""
 
-        // Check package name substrings for common system UI / overlay / notification / keyboard / service patterns across all OEMs
-        val systemUiSubstrings = listOf(
-            "systemui", "notification", "controlcenter", "upslide", "quickpanel", "quicksettings",
-            "statusbar", "shade", "volume", "sound", "audio", "media", "keyguard", "lockscreen", "lock",
-            "screenshot", "screenrecorder", "capture", "permissioncontroller", "inputmethod", "honeyboard",
-            "swiftkey", "cocktailbarservice", "assistantscreen", "assistant", "voice", "bixby",
-            "floatassistant", "incallui", "aod", "overlay", "cleanoem", "edge", "sidegesture", "side",
-            "battery", "powerkeeper", "cleaner", "guardprovider", "dialog", "alert", "popup", "floating",
-            "packageinstaller", "smartclip", "sidegesturepad", "smartsuggestions", "biometrics", "fingerprint", "face",
-            "smartshot", "aiservice", "touchtype", "iflytek", "sogou", "themecenter", "routine", "forest", "rubin",
-            "gms", "googlequicksearchbox", "personalassistant", "appvault", "minusone", "freeform", "window",
-            "securityadd", "cleanmaster", "discover", "mipicks", "clipboard", "taskedge", "appsedge", "clipboardedge",
-            "sidegesturepad", "authframework", "smartsidebar", "trichromelibrary", "webview", "customtab",
-            "autofill", "password", "credential", "safetycenter", "security", "guard", "cleaner", "power", "saver",
-            "theme", "wallpaper", "icon", "widget", "plugin", "service", "provider", "server", "system", "framework",
-            "android.gms", "android.gsf", "google.android.projection", "google.android.apps.tachyon",
-            "google.android.as", "google.android.tts", "speech", "lens", "translate", "toast", "tooltip"
-        )
-        if (systemUiSubstrings.any { lowerPkg.contains(it) }) return true
+        // 1. Input methods / Keyboards
+        if (lowerPkg.contains("inputmethod") || lowerPkg.contains("keyboard")) return true
 
-        // Also ignore common system UI / dialog / keyboard / overlay / webview class names
-        if (lowerClass.contains("inputmethod") || lowerClass.contains("statusbar") ||
-            lowerClass.contains("notificationshade") || lowerClass.contains("volume") ||
-            lowerClass.contains("systemui") || lowerClass.contains("quicksettings") ||
-            lowerClass.contains("quickpanel") || lowerClass.contains("dialog") ||
-            lowerClass.contains("popup") || lowerClass.contains("floating") ||
-            lowerClass.contains("overlay") || lowerClass.contains("keyguard") ||
-            lowerClass.contains("lockscreen") || lowerClass.contains("quickstep") ||
-            lowerClass.contains("gesture") || lowerClass.contains("panel") ||
-            lowerClass.contains("bar") || lowerClass.contains("menu") ||
-            lowerClass.contains("drawer") || lowerClass.contains("sheet") ||
-            lowerClass.contains("window") || lowerClass.contains("biometric") ||
-            lowerClass.contains("fingerprint") || lowerClass.contains("face") ||
-            lowerClass.contains("assistant") || lowerClass.contains("voice") ||
-            lowerClass.contains("search") || lowerClass.contains("lens") ||
-            lowerClass.contains("clipboard") || lowerClass.contains("edge") ||
-            lowerClass.contains("side") || lowerClass.contains("toast") ||
-            lowerClass.contains("tooltip") || lowerClass.contains("customtab") ||
-            lowerClass.contains("webview")) {
+        // 2. Volume, Sound, Audio dialogs & sliders (Fix for volume button press glitch)
+        if (lowerPkg.contains("volume") || lowerPkg.contains("sound") || lowerPkg.contains("audio") ||
+            lowerClass.contains("volume") || lowerClass.contains("volumedialog") ||
+            lowerClass.contains("sound") || lowerClass.contains("audio")) {
             return true
         }
 
-        val isLauncherOrRecentsPkg = pkg == "com.miui.recents" || pkg == "com.sec.android.app.taskmanager" ||
-            lowerPkg.contains("recents") || lowerPkg.contains("overview") || lowerPkg.contains("taskbar") ||
-            lowerPkg.contains("taskmanager") || lowerPkg.contains("launcher") || lowerPkg.contains("home") ||
-            lowerPkg.contains("trebuchet") || lowerPkg.contains("quickstep")
+        // 3. System UI: Status Bar, Quick Settings, Brightness, Notifications, Heads-up banners
+        if (lowerPkg.contains("systemui") || lowerPkg.contains("notification") ||
+            lowerClass.contains("quicksettings") || lowerClass.contains("brightness") ||
+            lowerClass.contains("headsup") || lowerClass.contains("heads_up") ||
+            lowerClass.contains("statusbar") || lowerClass.contains("pip") ||
+            lowerClass.contains("pictureinpicture")) {
+            return true
+        }
 
-        //  If an active session is running (not on loading/warning screen) 
-        if (!isLoadingScreenActive && !isWarningScreenActive) {
-            // Never ignore launcher or recents packages. This ensures that going to the home screen
-            // or opening the recent apps menu properly ends the current session!
-            if (isLauncherOrRecentsPkg) return false
-            
-            if (ignoredPackages.contains(pkg)) return true
-        } else {
-            // During loading screen / warning screen, do NOT ignore recents / taskmanager / launcher so leaving via gestures cancels the timer
-            if (ignoredPackages.contains(pkg) && !isLauncherOrRecentsPkg) return true
+        // 4. Power Dialog, Global Actions, Shutdown dialogs
+        if (lowerClass.contains("globalactions") || lowerClass.contains("powerdialog") ||
+            lowerClass.contains("shutdown") || lowerClass.contains("reboot")) {
+            return true
+        }
+
+        // 5. Screenshot & Screen Recorder toolbars/previews
+        if (lowerPkg.contains("screenshot") || lowerClass.contains("screenshot") ||
+            lowerPkg.contains("screenrecorder") || lowerClass.contains("screenrecorder")) {
+            return true
+        }
+
+        // 6. Biometric, Fingerprint, Face Unlock prompts
+        if (lowerPkg.contains("biometric") || lowerClass.contains("biometric") ||
+            lowerClass.contains("fingerprint") || lowerClass.contains("faceunlock")) {
+            return true
+        }
+
+        // 7. Clipboard, Autofill, and Password Manager popups
+        if (lowerPkg.contains("autofill") || lowerClass.contains("autofill") ||
+            lowerClass.contains("clipboard") || lowerPkg.contains("clipboard")) {
+            return true
+        }
+
+        // 8. Voice Assistants, Floating bubbles, Edge panels, Game Turbo overlays
+        if (lowerPkg.contains("gameturbo") || lowerClass.contains("gamebooster") ||
+            lowerClass.contains("edgepanel") || lowerPkg.contains("floating") ||
+            lowerClass.contains("floating") || lowerPkg.contains("voiceassist")) {
+            return true
+        }
+
+        // 9. Generic Toast and transient popup windows
+        if (lowerClass.contains("toast") || lowerClass.contains("transientnotification")) {
+            return true
         }
 
         return false
     }
 
+    private fun isLauncherOrRecent(pkg: String): Boolean {
+        if (pkg.isEmpty()) return false
+        val lower = pkg.lowercase()
+        if (lower.contains("launcher") || lower.contains("home") || lower.contains("recents") || lower.contains("overview")) return true
+        return try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
+            val resolveInfo = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            resolveInfo?.activityInfo?.packageName == pkg
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun isRealUserApp(pkg: String): Boolean {
+        if (pkg.isEmpty()) return false
+        if (isLauncherOrRecent(pkg)) return true
+        return try {
+            packageManager.getLaunchIntentForPackage(pkg) != null
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     //  Target Apps 
 
     private fun getTargetApps(): Set<String> {
-        val lucidPrefs = getSharedPreferences("LucidPrefs", Context.MODE_PRIVATE)
-        val lucidRaw = lucidPrefs.getString("target_apps", "") ?: ""
-        val lucidSet = lucidRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        return try {
+            val lucidPrefs = getSharedPreferences("LucidPrefs", Context.MODE_PRIVATE)
+            val lucidRaw = try { lucidPrefs.getString("target_apps", "") ?: "" } catch (_: Exception) { "" }
+            val lucidSet = lucidRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
-        val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val flutterRaw = flutterPrefs.getString("flutter.enabled_target_apps", "[]") ?: "[]"
-        val flutterSet = flutterRaw
-            .removePrefix("[").removeSuffix("]")
-            .replace("\"", "")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .toSet()
+            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val rawFlutter = flutterPrefs.all["flutter.enabled_target_apps"]
+            val flutterSet = when (rawFlutter) {
+                is String -> {
+                    rawFlutter
+                        .removePrefix("[").removeSuffix("]")
+                        .replace("\"", "")
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .toSet()
+                }
+                is Set<*> -> {
+                    rawFlutter.filterIsInstance<String>().toSet()
+                }
+                is List<*> -> {
+                    rawFlutter.filterIsInstance<String>().toSet()
+                }
+                else -> emptySet()
+            }
 
-        return lucidSet + flutterSet
+            lucidSet + flutterSet
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error getting target apps", e)
+            emptySet()
+        }
     }
 
-    //  Lifecycle 
+    private fun startForegroundServiceIfNeeded() {
+        try {
+            val channelId = "lucid_guard_channel"
+            val channelName = "Lucid Protection Status"
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+                val channel = NotificationChannel(
+                    channelId,
+                    channelName,
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Protects Lucid accessibility engine from OEM battery optimization"
+                    setShowBadge(false)
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            val pendingIntent = if (launchIntent != null) {
+                PendingIntent.getActivity(
+                    this, 0, launchIntent,
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    else PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            } else null
+
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(this, channelId)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(this)
+            }
+
+            val notification = builder
+                .setContentTitle("Lucid is protecting your focus")
+                .setContentText("Mindful screen time engine is active")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .apply {
+                    if (pendingIntent != null) setContentIntent(pendingIntent)
+                }
+                .setOngoing(true)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                } else {
+                    startForeground(1001, notification)
+                }
+            } else {
+                startForeground(1001, notification)
+            }
+            Log.d("Lucid", "Foreground service started with persistent notification (SmartPower immune)")
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error starting foreground notification", e)
+        }
+    }
+
+    private fun registerSystemReceiver() {
+        if (isSystemReceiverRegistered) return
+        try {
+            systemEventReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    val action = intent?.action ?: return
+                    when (action) {
+                        Intent.ACTION_SCREEN_OFF -> {
+                            Log.d("Lucid", "Screen turned off — canceling active timers to avoid pocket ticks")
+                            if (isLoadingScreenActive || overlayRoot != null) {
+                                cancelAllAnimators()
+                                removeLoadingScreen()
+                                releaseAudioFocus()
+                            }
+                            if (isWarningScreenActive || warningRoot != null) {
+                                removeWarningOverlay()
+                            }
+                        }
+                        TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
+                            val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                            if (state == TelephonyManager.EXTRA_STATE_RINGING || state == TelephonyManager.EXTRA_STATE_OFFHOOK) {
+                                Log.d("Lucid", "Incoming/active call ($state) — yielding overlay and releasing audio focus")
+                                releaseAudioFocus()
+                                if (isLoadingScreenActive || overlayRoot != null) {
+                                    cancelAllAnimators()
+                                    removeLoadingScreen()
+                                }
+                                if (isWarningScreenActive || warningRoot != null) {
+                                    removeWarningOverlay()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            }
+            registerReceiver(systemEventReceiver, filter)
+            isSystemReceiverRegistered = true
+            Log.d("Lucid", "System event receiver registered")
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error registering system event receiver", e)
+        }
+    }
+
+    // ─── Lifecycle ────────────────────────────────────────────────────────────
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            isServiceRunning = true
+            lastHeartbeatMs = System.currentTimeMillis()
+            audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            dailyLimitManager = DailyLimitManager(this)
+            startForegroundServiceIfNeeded()
+            registerSystemReceiver()
+            Log.d("Lucid", "LucidAccessibilityService created")
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error in onCreate", e)
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        dailyLimitManager = DailyLimitManager(this)
-        Log.d("Lucid", "Service connected")
+        try {
+            isServiceRunning = true
+            lastHeartbeatMs = System.currentTimeMillis()
+            if (audioManager == null) audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (windowManager == null) windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (!::dailyLimitManager.isInitialized) dailyLimitManager = DailyLimitManager(this)
+            startForegroundServiceIfNeeded()
+            registerSystemReceiver()
+            healthCheckHandler.removeCallbacks(healthCheckRunnable)
+            healthCheckHandler.postDelayed(healthCheckRunnable, 5000)
+            Log.d("Lucid", "Service connected successfully")
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error in onServiceConnected", e)
+        }
     }
 
-    //  Event Routing 
+    // ─── Event Routing ────────────────────────────────────────────────────────
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        try {
+            isServiceRunning = true
+            lastHeartbeatMs = System.currentTimeMillis()
+            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
-        val pkg = event.packageName?.toString() ?: return
-        val className = event.className?.toString()
+            val pkg = event.packageName?.toString() ?: return
+            val className = event.className?.toString()
 
-        //  Always skip system UI, notification menu, recents, dialogs, keyboards 
-        // IMPORTANT: notification shade and recents are ignored here, so opening
-        // or closing them does NOT update currentApp or end an active session.
-        if (isIgnoredPackage(pkg, className)) return
+            // Always skip system UI, volume/sound sliders, notification shade, dialogs, keyboards
+            if (isIgnoredPackage(pkg, className)) return
 
-        val targets = getTargetApps()
+            val targets = getTargetApps()
 
-        //  Skip duplicate same-package events (tab switches, dialogs, etc.) 
-        if (pkg == currentApp && currentApp.isNotEmpty()) {
-            if (targets.contains(pkg)) {
-                // If the user clicked "Leave" and reopened lightning fast, the package might never have changed to Home.
-                // In that case, the session is dead (not in activeSessionApps) and no timer is shown.
-                // We MUST start a new timer instead of skipping!
-                if (activeSessionApps.contains(pkg) || isLoadingScreenActive || isWarningScreenActive) {
+            // Shield active overlays (60s pause, warning, or daily limit screen)
+            // against transient non-app events or internal sub-panels
+            val hasActiveOverlay = isLoadingScreenActive || isWarningScreenActive ||
+                (::dailyLimitManager.isInitialized && dailyLimitManager.isShowingLimitScreen())
+
+            if (hasActiveOverlay) {
+                // Same app sub-event (e.g. video player view, tab, internal dialog) -> keep overlay active
+                if (pkg == currentApp) return
+
+                // Switching directly to another monitored target app -> transition gracefully
+                if (targets.contains(pkg)) {
+                    Log.d("Lucid", "Switching from $currentApp to another target app: $pkg")
+                    cancelAllAnimators()
+                    removeLoadingScreen()
+                    removeWarningOverlay()
+                    if (::dailyLimitManager.isInitialized) {
+                        dailyLimitManager.removeScreen()
+                        dailyLimitManager.recordSessionEnd(currentApp)
+                    }
+                    currentApp = pkg
+                    if (::dailyLimitManager.isInitialized && dailyLimitManager.hasExceededDailyLimit(pkg)) {
+                        dailyLimitManager.showDailyLimitScreen(pkg) {
+                            activeSessionApps.remove(pkg)
+                            continueCountMap.remove(pkg)
+                            dailyLimitManager.recordSessionEnd(pkg)
+                            performGlobalAction(GLOBAL_ACTION_HOME)
+                        }
+                    } else {
+                        if (::dailyLimitManager.isInitialized) {
+                            dailyLimitManager.recordSessionStart(pkg)
+                        }
+                        showMindfulLoadingScreen()
+                    }
                     return
                 }
-            } else {
-                return
-            }
-        }
 
-        val prev = currentApp
-        currentApp = pkg
+                // If event is NOT a real user/launcher app (e.g. transient dialog, floating tool, OEM overlay):
+                // SHIELD THE TIMER: do NOT remove the loading screen or drop session!
+                if (!isRealUserApp(pkg)) {
+                    Log.d("Lucid", "Shielding active timer against transient non-user app: $pkg ($className)")
+                    return
+                }
 
-        //  Leaving a target app  only end session if going to a REAL non-target app 
-        if (prev.isNotEmpty() && targets.contains(prev) && !targets.contains(currentApp)) {
-            activeSessionApps.remove(prev)
-            continueCountMap.remove(prev)
-            stopUsageTimer()
-            dailyLimitManager.recordSessionEnd(prev)
-            if (isLoadingScreenActive || overlayRoot != null) {
+                // User genuinely navigated to Home/Recents or another real user app (e.g. WhatsApp):
+                Log.d("Lucid", "User genuinely navigated away during active timer to: $pkg ($className)")
+                activeSessionApps.remove(currentApp)
+                continueCountMap.remove(currentApp)
+                stopUsageTimer()
                 cancelAllAnimators()
                 removeLoadingScreen()
-            }
-            if (dailyLimitManager.isShowingLimitScreen()) {
-                dailyLimitManager.removeScreen()
-            }
-            Log.d("Lucid", "Left $prev  session ended (now at $currentApp)")
-        }
-
-        //  Opened a target app 
-        if (targets.contains(currentApp)) {
-            if (activeSessionApps.contains(currentApp)) {
-                // User returned to this app mid-session  no timer
-                Log.d("Lucid", "Returned to $currentApp (active session)  no timer")
+                removeWarningOverlay()
+                releaseAudioFocus()
+                if (::dailyLimitManager.isInitialized) {
+                    dailyLimitManager.recordSessionEnd(currentApp)
+                    dailyLimitManager.removeScreen()
+                }
+                currentApp = pkg
                 return
             }
-            if (!isLoadingScreenActive && !isWarningScreenActive && !dailyLimitManager.isShowingLimitScreen()) {
-                stopUsageTimer()
-                
-                if (dailyLimitManager.hasExceededDailyLimit(currentApp)) {
-                    dailyLimitManager.showDailyLimitScreen(currentApp) {
-                        activeSessionApps.remove(currentApp)
-                        continueCountMap.remove(currentApp)
-                        dailyLimitManager.recordSessionEnd(currentApp)
-                        performGlobalAction(GLOBAL_ACTION_HOME)
+
+            if (pkg != currentApp) {
+                Log.d("Lucid", "Event: app switch '$currentApp' -> '$pkg' (class: $className)")
+            }
+
+            // Skip duplicate same-package events (tab switches, dialogs, etc.)
+            if (pkg == currentApp && currentApp.isNotEmpty()) {
+                if (targets.contains(pkg)) {
+                    // If the user clicked "Leave" and reopened lightning fast, session is dead
+                    if (activeSessionApps.contains(pkg) || isLoadingScreenActive || isWarningScreenActive) {
+                        return
                     }
                 } else {
-                    dailyLimitManager.recordSessionStart(currentApp)
-                    showMindfulLoadingScreen()
+                    return
                 }
             }
+
+            val prev = currentApp
+            currentApp = pkg
+
+            // Leaving a target app — only end session if going to a REAL non-target app
+            if (prev.isNotEmpty() && targets.contains(prev) && !targets.contains(currentApp)) {
+                if (!isRealUserApp(currentApp)) {
+                    // Not a real app switch, don't end session
+                    currentApp = prev
+                    return
+                }
+                activeSessionApps.remove(prev)
+                continueCountMap.remove(prev)
+                stopUsageTimer()
+                if (::dailyLimitManager.isInitialized) {
+                    dailyLimitManager.recordSessionEnd(prev)
+                }
+                if (isLoadingScreenActive || overlayRoot != null) {
+                    cancelAllAnimators()
+                    removeLoadingScreen()
+                }
+                if (isWarningScreenActive || warningRoot != null) {
+                    removeWarningOverlay()
+                }
+                if (::dailyLimitManager.isInitialized && dailyLimitManager.isShowingLimitScreen()) {
+                    dailyLimitManager.removeScreen()
+                }
+                Log.d("Lucid", "Left $prev — session ended (now at $currentApp)")
+            }
+
+            // Opened a target app
+            if (targets.contains(currentApp)) {
+                if (activeSessionApps.contains(currentApp)) {
+                    Log.d("Lucid", "Returned to $currentApp (active session) — no timer")
+                    return
+                }
+                if (!isLoadingScreenActive && !isWarningScreenActive &&
+                    !(::dailyLimitManager.isInitialized && dailyLimitManager.isShowingLimitScreen())) {
+                    stopUsageTimer()
+
+                    if (::dailyLimitManager.isInitialized && dailyLimitManager.hasExceededDailyLimit(currentApp)) {
+                        Log.d("Lucid", "$currentApp exceeded daily limit, showing daily limit screen")
+                        dailyLimitManager.showDailyLimitScreen(currentApp) {
+                            activeSessionApps.remove(currentApp)
+                            continueCountMap.remove(currentApp)
+                            dailyLimitManager.recordSessionEnd(currentApp)
+                            performGlobalAction(GLOBAL_ACTION_HOME)
+                        }
+                    } else {
+                        if (::dailyLimitManager.isInitialized) {
+                            dailyLimitManager.recordSessionStart(currentApp)
+                        }
+                        Log.d("Lucid", "Showing mindful loading screen for $currentApp")
+                        showMindfulLoadingScreen()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error in onAccessibilityEvent", e)
         }
     }
 
@@ -341,6 +665,7 @@ class LucidAccessibilityService : AccessibilityService() {
     //  Loading Screen 
 
     private fun showMindfulLoadingScreen() {
+      try {
         if (overlayRoot != null) {
             try { windowManager?.removeView(overlayRoot) } catch (_: Exception) {}
             overlayRoot = null
@@ -354,7 +679,9 @@ class LucidAccessibilityService : AccessibilityService() {
         val totalMs    = 60_000L
         val dp         = resources.displayMetrics.density
 
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        if (windowManager == null) {
+            windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        }
 
         // Get app icon and label for personalized experience
         val appIcon: Drawable? = try { packageManager.getApplicationIcon(blockedApp) } catch (_: Exception) { null }
@@ -393,8 +720,28 @@ class LucidAccessibilityService : AccessibilityService() {
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), glowPaintBottom)
                 super.onDraw(canvas)
             }
+
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    try {
+                        cancelAllAnimators()
+                        removeLoadingScreen()
+                        releaseAudioFocus()
+                        if (::dailyLimitManager.isInitialized) {
+                            dailyLimitManager.recordSessionEnd(currentApp)
+                        }
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                    } catch (e: Exception) {
+                        Log.e("Lucid", "Error handling back key on loading screen", e)
+                    }
+                    return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
         }.apply {
             setWillNotDraw(false)
+            isFocusableInTouchMode = true
+            requestFocus()
         }
 
         //  Center content layout 
@@ -585,12 +932,18 @@ class LucidAccessibilityService : AccessibilityService() {
               setPadding((dp * 16).toInt(), (dp * 18).toInt(), (dp * 16).toInt(), (dp * 18).toInt())
               addTouchScaleEffect(0.96f)
               setOnClickListener {
-                  activeSessionApps.remove(currentApp)
-                  continueCountMap.remove(currentApp)
-                  cancelAllAnimators()
-                  removeLoadingScreen()
-                  dailyLimitManager.recordSessionEnd(currentApp)
-                  performGlobalAction(GLOBAL_ACTION_HOME)
+                  try {
+                      activeSessionApps.remove(currentApp)
+                      continueCountMap.remove(currentApp)
+                      cancelAllAnimators()
+                      removeLoadingScreen()
+                      if (::dailyLimitManager.isInitialized) {
+                          dailyLimitManager.recordSessionEnd(currentApp)
+                      }
+                      performGlobalAction(GLOBAL_ACTION_HOME)
+                  } catch (e: Exception) {
+                      Log.e("Lucid", "Error leaving from loading screen", e)
+                  }
               }
           }
         content.addView(goBackBtn, LinearLayout.LayoutParams(
@@ -622,10 +975,12 @@ class LucidAccessibilityService : AccessibilityService() {
         )
         try {
             windowManager?.addView(root, params)
+            overlayRoot = root
         } catch (e: Exception) {
             Log.e("Lucid", "Error adding loading screen overlay", e)
+            isLoadingScreenActive = false
+            return
         }
-        overlayRoot = root
 
         // Fade-in animation
         root.alpha = 0f
@@ -668,23 +1023,40 @@ class LucidAccessibilityService : AccessibilityService() {
         )
         countdownTimer = object : CountDownTimer(totalMs, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                val secs = ((millisUntilFinished + 999) / 1000).coerceAtLeast(1)
-                val elapsedSecs = ((totalMs - millisUntilFinished) / 1000).toInt()
-                val msgIndex = (elapsedSecs / 10) % breathingMessages.size
-                
-                Handler(Looper.getMainLooper()).post {
-                    secondsTv.text = "$secs"
-                    breathingGuidanceTv.text = breathingMessages[msgIndex]
+                try {
+                    val secs = ((millisUntilFinished + 999) / 1000).coerceAtLeast(1)
+                    val elapsedSecs = ((totalMs - millisUntilFinished) / 1000).toInt()
+                    val msgIndex = (elapsedSecs / 10) % breathingMessages.size
+                    
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            if (!isLoadingScreenActive || overlayRoot == null) return@post
+                            secondsTv.text = "$secs"
+                            breathingGuidanceTv.text = breathingMessages[msgIndex]
+                        } catch (e: Exception) {
+                            Log.e("Lucid", "Error updating countdown UI", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("Lucid", "Error in countdownTimer onTick", e)
                 }
             }
             override fun onFinish() {
-                cancelAllAnimators()
-                activeSessionApps.add(blockedApp)
-                releaseAudioFocus()
-                removeLoadingScreen()
-                startUsageTimer()
+                try {
+                    cancelAllAnimators()
+                    activeSessionApps.add(blockedApp)
+                    releaseAudioFocus()
+                    removeLoadingScreen()
+                    startUsageTimer()
+                } catch (e: Exception) {
+                    Log.e("Lucid", "Error in countdownTimer onFinish", e)
+                }
             }
         }.start()
+      } catch (e: Exception) {
+          Log.e("Lucid", "Error showing loading screen", e)
+          isLoadingScreenActive = false
+      }
     }
 
     private fun cancelAllAnimators() {
@@ -698,15 +1070,21 @@ class LucidAccessibilityService : AccessibilityService() {
         countdownTimer = null
         releaseAudioFocus()
         val view = overlayRoot ?: return
-        view.animate().alpha(0f).setDuration(300)
-            .setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    try { windowManager?.removeView(view) } catch (_: Exception) {}
-                    if (overlayRoot == view) {
-                        overlayRoot = null
+        try {
+            view.animate().alpha(0f).setDuration(300)
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        try { windowManager?.removeView(view) } catch (_: Exception) {}
+                        if (overlayRoot == view) {
+                            overlayRoot = null
+                        }
                     }
-                }
-            }).start()
+                }).start()
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error removing loading screen", e)
+            try { windowManager?.removeView(view) } catch (_: Exception) {}
+            overlayRoot = null
+        }
     }
 
     //  Usage Warning (fires at WARNING_INTERVAL_MS) 
@@ -717,18 +1095,32 @@ class LucidAccessibilityService : AccessibilityService() {
     }
 
     private fun scheduleNextWarning() {
-        stopUsageTimer()
-        val intervalMs = getWarningIntervalMs()
-        usageTimer = object : CountDownTimer(intervalMs, 1000) {
-            override fun onTick(millisUntilFinished: Long) {}
-            override fun onFinish() {
-                if (getTargetApps().contains(currentApp) && activeSessionApps.contains(currentApp)) {
-                    Handler(Looper.getMainLooper()).post {
-                        showUsageWarning()
+        try {
+            stopUsageTimer()
+            val intervalMs = getWarningIntervalMs()
+            Log.d("Lucid", "Scheduling next warning in ${intervalMs / 1000}s for $currentApp")
+            usageTimer = object : CountDownTimer(intervalMs, 1000) {
+                override fun onTick(millisUntilFinished: Long) {}
+                override fun onFinish() {
+                    try {
+                        Log.d("Lucid", "Usage timer finished for $currentApp. Active session: ${activeSessionApps.contains(currentApp)}")
+                        if (getTargetApps().contains(currentApp) && activeSessionApps.contains(currentApp)) {
+                            Handler(Looper.getMainLooper()).post {
+                                try {
+                                    showUsageWarning()
+                                } catch (e: Exception) {
+                                    Log.e("Lucid", "Error showing warning in post", e)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Lucid", "Error in usage timer finish", e)
                     }
                 }
-            }
-        }.start()
+            }.start()
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error in scheduleNextWarning", e)
+        }
     }
 
     private fun stopUsageTimer() {
@@ -737,13 +1129,16 @@ class LucidAccessibilityService : AccessibilityService() {
     }
 
     private fun showUsageWarning() {
+      try {
         if (isWarningScreenActive) return
         if (warningRoot != null) {
             try { windowManager?.removeView(warningRoot) } catch (_: Exception) {}
             warningRoot = null
         }
         isWarningScreenActive = true
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        if (windowManager == null) {
+            windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        }
         val dp = resources.displayMetrics.density
 
         val root = FrameLayout(this)
@@ -906,12 +1301,18 @@ class LucidAccessibilityService : AccessibilityService() {
               setPadding((dp * 24).toInt(), (dp * 16).toInt(), (dp * 24).toInt(), (dp * 16).toInt())
               addTouchScaleEffect(0.96f)
               setOnClickListener {
-                  activeSessionApps.remove(currentApp)
-                  continueCountMap.remove(currentApp)
-                  stopUsageTimer()
-                  removeWarningOverlay()
-                  dailyLimitManager.recordSessionEnd(currentApp)
-                  performGlobalAction(GLOBAL_ACTION_HOME)
+                  try {
+                      activeSessionApps.remove(currentApp)
+                      continueCountMap.remove(currentApp)
+                      stopUsageTimer()
+                      removeWarningOverlay()
+                      if (::dailyLimitManager.isInitialized) {
+                          dailyLimitManager.recordSessionEnd(currentApp)
+                      }
+                      performGlobalAction(GLOBAL_ACTION_HOME)
+                  } catch (e: Exception) {
+                      Log.e("Lucid", "Error on warning goBack click", e)
+                  }
               }
           }
         card.addView(goBackBtn, LinearLayout.LayoutParams(
@@ -919,7 +1320,7 @@ class LucidAccessibilityService : AccessibilityService() {
         ).apply { bottomMargin = (dp * 12).toInt() })
 
         // Secondary Action Button (Ghost / Dark)  only shown on first warning per session
-        val appContinueCount = continueCountMap.getOrDefault(currentApp, 0)
+        val appContinueCount = continueCountMap[currentApp] ?: 0
         if (appContinueCount < 1) {
             val continueBtn = object : TextView(this) {
                 private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#1F1C36") }
@@ -942,9 +1343,13 @@ class LucidAccessibilityService : AccessibilityService() {
                 setPadding((dp * 20).toInt(), (dp * 14).toInt(), (dp * 20).toInt(), (dp * 14).toInt())
                 addTouchScaleEffect(0.97f)
                 setOnClickListener {
-                    continueCountMap[currentApp] = appContinueCount + 1
-                    removeWarningOverlay()
-                    scheduleNextWarning()
+                    try {
+                        continueCountMap[currentApp] = appContinueCount + 1
+                        removeWarningOverlay()
+                        scheduleNextWarning()
+                    } catch (e: Exception) {
+                        Log.e("Lucid", "Error on continue click", e)
+                    }
                 }
             }
             card.addView(continueBtn, LinearLayout.LayoutParams(
@@ -969,53 +1374,92 @@ class LucidAccessibilityService : AccessibilityService() {
         )
         try {
             windowManager?.addView(root, wParams)
+            warningRoot = root
         } catch (e: Exception) {
             Log.e("Lucid", "Error adding warning overlay", e)
+            isWarningScreenActive = false
+            return
         }
-        warningRoot = root
 
         root.alpha = 0f
         root.animate().alpha(1f).setDuration(350).start()
+      } catch (e: Exception) {
+          Log.e("Lucid", "Error showing usage warning", e)
+          isWarningScreenActive = false
+      }
     }
 
     private fun removeWarningOverlay() {
         isWarningScreenActive = false
         val view = warningRoot ?: return
-        view.animate().alpha(0f).setDuration(250)
-            .setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    try { windowManager?.removeView(view) } catch (_: Exception) {}
-                    if (warningRoot == view) {
-                        warningRoot = null
+        try {
+            view.animate().alpha(0f).setDuration(250)
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        try { windowManager?.removeView(view) } catch (_: Exception) {}
+                        if (warningRoot == view) {
+                            warningRoot = null
+                        }
                     }
-                }
-            }).start()
+                }).start()
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error removing warning overlay", e)
+            try { windowManager?.removeView(view) } catch (_: Exception) {}
+            warningRoot = null
+        }
     }
 
     //  Cleanup 
 
     override fun onInterrupt() {
-        cancelAllAnimators()
-        removeLoadingScreen()
-        removeWarningOverlay()
-        stopUsageTimer()
-        releaseAudioFocus()
-        if (::dailyLimitManager.isInitialized) {
-            dailyLimitManager.cleanup()
+        try {
+            Log.d("Lucid", "Service interrupted")
+            cancelAllAnimators()
+            removeLoadingScreen()
+            removeWarningOverlay()
+            stopUsageTimer()
+            releaseAudioFocus()
+            if (::dailyLimitManager.isInitialized) {
+                dailyLimitManager.cleanup()
+            }
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error in onInterrupt", e)
         }
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        cancelAllAnimators()
-        removeLoadingScreen()
-        removeWarningOverlay()
-        stopUsageTimer()
-        activeSessionApps.clear()
-        continueCountMap.clear()
-        releaseAudioFocus()
-        if (::dailyLimitManager.isInitialized) {
-            dailyLimitManager.cleanup()
+        try {
+            isServiceRunning = false
+            healthCheckHandler.removeCallbacks(healthCheckRunnable)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            } catch (_: Exception) {}
+            try {
+                if (isSystemReceiverRegistered && systemEventReceiver != null) {
+                    unregisterReceiver(systemEventReceiver)
+                    isSystemReceiverRegistered = false
+                    systemEventReceiver = null
+                }
+            } catch (_: Exception) {}
+            super.onDestroy()
+            cancelAllAnimators()
+            removeLoadingScreen()
+            removeWarningOverlay()
+            stopUsageTimer()
+            activeSessionApps.clear()
+            continueCountMap.clear()
+            releaseAudioFocus()
+            if (::dailyLimitManager.isInitialized) {
+                dailyLimitManager.cleanup()
+            }
+            Log.d("Lucid", "Service destroyed")
+        } catch (e: Exception) {
+            Log.e("Lucid", "Error in onDestroy", e)
         }
     }
 }

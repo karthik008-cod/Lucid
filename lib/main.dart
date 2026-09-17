@@ -30,30 +30,37 @@ class LucidApp extends StatelessWidget {
           title: 'Lucid - Mindful Screen Time',
           themeMode: mode,
           theme: ThemeData.light().copyWith(
-            scaffoldBackgroundColor: const Color(0xFFF5F3FA),
+            scaffoldBackgroundColor: const Color(0xFFFAF9F6), // Warm off-white / ivory, NOT pure white
             textTheme: GoogleFonts.plusJakartaSansTextTheme(ThemeData.light().textTheme),
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF6200EE),
-              secondary: Color(0xFF03DAC6),
-              surface: Color(0xFFFFFFFF),
-              onSurface: Color(0xFF1C1B1F),
-              outline: Color(0xFFE0DDE8),
+              primary: Color(0xFFFFC857), // Soft golden yellow
+              onPrimary: Color(0xFF2F2F2F), // Dark charcoal on gold
+              secondary: Color(0xFFEAA824), // Deeper warm gold
+              surface: Color(0xFFFFFDF9), // Slightly lighter warm ivory cards
+              onSurface: Color(0xFF2F2F2F), // Dark charcoal text
+              outline: Color(0xFFD9D6D0), // Very light warm gray border
             ),
             appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFFF5F3FA),
-              foregroundColor: Color(0xFF1C1B1F),
+              backgroundColor: Color(0xFFFAF9F6),
+              foregroundColor: Color(0xFF2F2F2F),
               elevation: 0,
             ),
           ),
           darkTheme: ThemeData.dark().copyWith(
-            scaffoldBackgroundColor: const Color(0xFF0A0A12),
+            scaffoldBackgroundColor: const Color(0xFF191816), // Warm deep charcoal
             textTheme: GoogleFonts.plusJakartaSansTextTheme(ThemeData.dark().textTheme),
             colorScheme: const ColorScheme.dark(
-              primary: Color(0xFFBB86FC),
-              secondary: Color(0xFF03DAC6),
-              surface: Color(0xFF161622),
-              onSurface: Color(0xFFE8E6F0),
-              outline: Color(0xFF2A2838),
+              primary: Color(0xFFFFC857), // Golden yellow
+              onPrimary: Color(0xFF191816),
+              secondary: Color(0xFFEAA824),
+              surface: Color(0xFF24221F), // Warm dark surface card
+              onSurface: Color(0xFFEDE8DF), // Warm ivory text
+              outline: Color(0xFF383530), // Warm dark border
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF191816),
+              foregroundColor: Color(0xFFEDE8DF),
+              elevation: 0,
             ),
           ),
           home: const _AppEntry(),
@@ -209,7 +216,7 @@ class _SplashScreenState extends State<_SplashScreen>
         : (24.0 + 1.0);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A12),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: RepaintBoundary(
         child: AnimatedBuilder(
         animation: Listenable.merge([
@@ -238,12 +245,14 @@ class _SplashScreenState extends State<_SplashScreen>
               if (destChild != null && tVal > 0.0)
                 destChild,
 
-              // Dark background (fades out during transition to smoothly reveal destChild underneath)
+              // Warm background (fades out during transition to smoothly reveal destChild underneath)
               if (bgOpacity > 0)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Container(
-                      color: Color.fromRGBO(3, 0, 13, bgOpacity),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Color.fromRGBO(25, 24, 22, bgOpacity)
+                          : Color.fromRGBO(250, 249, 246, bgOpacity),
                     ),
                   ),
                 ),
@@ -264,7 +273,7 @@ class _SplashScreenState extends State<_SplashScreen>
                             'Mindful Screen Time',
                             style: TextStyle(
                               fontSize: 13,
-                              color: Color(0xFF8877AA),
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                               letterSpacing: 2,
                             ),
                           ),
@@ -290,7 +299,7 @@ class _SplashScreenState extends State<_SplashScreen>
                       borderRadius: BorderRadius.circular(radius),
                       boxShadow: [
                         BoxShadow(
-                          color: Color.fromRGBO(187, 134, 252, 0.5 * (1.0 - tVal * 0.7)),
+                          color: const Color(0xFFFFC857).withValues(alpha: 0.35 * (1.0 - tVal * 0.7)),
                           blurRadius: ui.lerpDouble(40.0, 14.0, tVal)!,
                           spreadRadius: ui.lerpDouble(6.0, 1.0, tVal)!,
                         ),
@@ -369,10 +378,10 @@ class _ShimmerBarState extends State<_ShimmerBar>
             borderRadius: BorderRadius.circular(2),
             gradient: LinearGradient(
               colors: const [
-                Color(0xFF1A0A2E),
-                Color(0xFFBB86FC),
-                Color(0xFF03DAC6),
-                Color(0xFF1A0A2E),
+                Color(0xFFE8E5DE),
+                Color(0xFFFFC857),
+                Color(0xFFEAA824),
+                Color(0xFFE8E5DE),
               ],
               stops: [
                 (_anim.value - 0.3).clamp(0.0, 1.0),
@@ -386,6 +395,17 @@ class _ShimmerBarState extends State<_ShimmerBar>
       },
     );
   }
+}
+
+// """ Safe SharedPreferences Helper """""""""""""""""""""""""""""""""""""""""
+int _safePrefsInt(SharedPreferences prefs, String key, [int fallback = 0]) {
+  try {
+    final val = prefs.get(key);
+    if (val is int) return val;
+    if (val is num) return val.toInt();
+    if (val is String) return int.tryParse(val) ?? fallback;
+  } catch (_) {}
+  return fallback;
 }
 
 // """ Onboarding Screen (first-launch only) """""""""""""""""""""""""""""""""""
@@ -411,7 +431,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   bool _accessibilityGranted = false;
   bool _usageGranted = false;
-  bool _restrictedSettingsGranted = false;
+  bool _batteryGranted = false;
+  bool _autostartGranted = false;
+  bool _notificationGranted = true;
   int _warningMins = 15;
 
   @override
@@ -445,7 +467,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Future<void> _loadWarningMins() async {
     final prefs = await SharedPreferences.getInstance();
-    int mins = prefs.getInt('warning_interval_mins') ?? 15;
+    int mins = _safePrefsInt(prefs, 'warning_interval_mins', 15);
     try {
       final nativeMins = await _channel.invokeMethod<int>('getWarningInterval');
       if (nativeMins != null && nativeMins > 0) mins = nativeMins;
@@ -480,30 +502,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
     } catch (_) {}
 
+    bool batteryOk = false;
+    try {
+      batteryOk =
+          await _channel.invokeMethod<bool>('isBatteryOptimizationIgnored') ?? false;
+    } catch (_) {}
+
+    bool notifOk = true;
+    try {
+      notifOk =
+          await _channel.invokeMethod<bool>('isNotificationPermissionGranted') ?? true;
+    } catch (_) {}
+
     final prefs = await SharedPreferences.getInstance();
-    final rsClicked = prefs.getBool('restricted_settings_granted') ?? false;
+    final autostartOk = prefs.getBool('autostart_granted') ?? false;
 
     if (mounted) {
       setState(() {
         _usageGranted = usageOk;
         _accessibilityGranted = accessOk;
-        _restrictedSettingsGranted = accessOk || rsClicked;
+        _batteryGranted = batteryOk;
+        _autostartGranted = autostartOk;
+        _notificationGranted = notifOk;
       });
     }
-  }
-
-  Future<void> _openAppInfo() async {
-    if (mounted) {
-      _showBeautifulToast(context, 'Opening App Info... Please allow restricted settings.');
-    }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('restricted_settings_granted', true);
-    setState(() => _restrictedSettingsGranted = true);
-    try {
-      await _channel.invokeMethod('openAppInfo');
-    } catch (_) {}
-    await Future.delayed(const Duration(seconds: 2));
-    await _checkPermissions();
   }
 
   Future<void> _openAccessibility() async {
@@ -515,6 +537,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     } catch (_) {}
     await Future.delayed(const Duration(seconds: 2));
     await _checkPermissions();
+  }
+
+  Future<void> _openAppInfo() async {
+    if (mounted) {
+      _showBeautifulToast(context, 'Opening App Info... Tap the 3 dots (⋮) in top right to allow restricted settings!');
+    }
+    try {
+      await _channel.invokeMethod('openAppInfo');
+    } catch (_) {}
   }
 
   Future<void> _openUsageAccess() async {
@@ -533,13 +564,52 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     await _checkPermissions();
   }
 
+  Future<void> _requestBatteryOptimization() async {
+    if (mounted) {
+      _showBeautifulToast(context, 'Requesting Unrestricted Battery optimization...');
+    }
+    try {
+      await _channel.invokeMethod('requestIgnoreBatteryOptimization');
+    } catch (_) {}
+    await Future.delayed(const Duration(seconds: 1));
+    await _checkPermissions();
+  }
+
+  Future<void> _openAutostart() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('autostart_granted', true);
+    if (mounted) {
+      setState(() => _autostartGranted = true);
+      _showBeautifulToast(context, 'Opening Background Settings... Marked active!');
+    }
+    try {
+      await _channel.invokeMethod('openAutostartSettings');
+    } catch (_) {}
+    await Future.delayed(const Duration(seconds: 1));
+    await _checkPermissions();
+  }
+
+  Future<void> _requestNotification() async {
+    try {
+      await _channel.invokeMethod('requestNotificationPermission');
+    } catch (_) {}
+    await Future.delayed(const Duration(seconds: 1));
+    await _checkPermissions();
+  }
+
   Future<void> _finish() async {
     if (!_accessibilityGranted || !_usageGranted) {
       if (mounted) {
-        _showBeautifulToast(context, 'Please grant both permissions to continue!');
+        _showBeautifulToast(context, 'Please grant both required permissions to continue!');
       }
       return;
     }
+    try {
+      if (!_batteryGranted) {
+        await _channel.invokeMethod('requestIgnoreBatteryOptimization');
+      }
+    } catch (_) {}
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_done', true);
     widget.onDone();
@@ -549,12 +619,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final bothGranted = _accessibilityGranted && _usageGranted;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Animated gradient background
+          // Animated warm background
           FadeTransition(
             opacity: _bgAnim,
             child: Container(
@@ -562,29 +633,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               height: size.height,
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: Alignment(0, -0.4),
+                  center: const Alignment(0, -0.4),
                   radius: 1.4,
                   colors: [
-                    Color(0xFF1A0A2E),
+                    isDark ? const Color(0xFF24221F) : const Color(0xFFFFFDF9),
                     Theme.of(context).scaffoldBackgroundColor,
-                    Color(0xFF0A0A12)
+                    isDark ? const Color(0xFF191816) : const Color(0xFFFAF9F6),
                   ],
-                  stops: [0, 0.55, 1],
+                  stops: const [0, 0.55, 1],
                 ),
               ),
             ),
           ),
 
-          // Glowing orbs
+          // Subtle warm decorative orbs
           Positioned(
             top: -60,
             left: -80,
-            child: _Orb(color: const Color(0x22BB86FC), size: 260),
+            child: _Orb(color: const Color(0xFFFFC857).withValues(alpha: isDark ? 0.08 : 0.12), size: 260),
           ),
           Positioned(
             bottom: -80,
             right: -60,
-            child: _Orb(color: const Color(0x1403DAC6), size: 220),
+            child: _Orb(color: const Color(0xFFEAA824).withValues(alpha: isDark ? 0.06 : 0.09), size: 220),
           ),
 
           SafeArea(
@@ -609,7 +680,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 borderRadius: BorderRadius.circular(20),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFFBB86FC).withValues(alpha: 0.5),
+                                    color: const Color(0xFFFFC857).withValues(alpha: 0.35),
                                     blurRadius: 28,
                                     spreadRadius: 4,
                                   )
@@ -634,48 +705,93 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           ],
                         ),
                       ),
-                      SizedBox(height: 12),
+                      const SizedBox(height: 12),
                       Text(
-                        'Three quick permissions and you\'re set.\nLucid needs these to guard your attention.',
+                        'Set up required permissions and background defense so Lucid can guard your attention seamlessly.',
                         style: TextStyle(
-                          fontSize: 15,
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                          height: 1.6,
+                          fontSize: 14,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+                          height: 1.5,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 28),
 
-                      // Permission card 0: Restricted Settings
-                      _PermissionCard(
-                        title: 'Allow Restricted Settings',
-                        description:
-                            'If the Accessibility toggle is greyed out in settings, return here, tap "Open App Info", tap the top-right  menu and select "Allow restricted settings". If you don\'t see it, you can skip this step!',
-                        granted: _restrictedSettingsGranted,
-                        onGrant: _openAppInfo,
-                        grantLabel: 'Open App Info',
-                      ),
-                      const SizedBox(height: 16),
+                      // Section: Core Permissions
+                      const _SectionHeader(title: 'CORE PERMISSIONS', icon: Icons.lock_outline_rounded),
+                      const SizedBox(height: 12),
 
                       // Permission card 1: Accessibility
                       _PermissionCard(
                         title: 'Accessibility Service',
                         description:
-                            'Lets Lucid detect when you open a monitored app and show the mindful timer overlay.',
+                            'Lets Lucid detect when you open a monitored app and show the mindful timer pause. '
+                            'On Android 13+, allow restricted settings in App Info if prompted.',
                         granted: _accessibilityGranted,
                         onGrant: _openAccessibility,
                         grantLabel: 'Enable in Settings',
+                        icon: Icons.accessibility_new_rounded,
+                        badge: 'Required',
                       ),
-                      const SizedBox(height: 16),
+                      if (!_accessibilityGranted)
+                        _RestrictedSettingGuide(
+                          onOpenAppInfo: _openAppInfo,
+                        ),
+                      const SizedBox(height: 14),
 
                       // Permission card 2: Usage Access
                       _PermissionCard(
                         title: 'Usage Access',
                         description:
-                            'Allows Lucid to read which app is in the foreground so it can track session time.',
+                            'Allows Lucid to read foreground screen time and compute mindful session duration.',
                         granted: _usageGranted,
                         onGrant: _openUsageAccess,
-                        grantLabel: 'Grant Usage Access',
+                        grantLabel: 'Grant Access',
+                        icon: Icons.insights_rounded,
+                        badge: 'Required',
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Section: Background Shield
+                      const _SectionHeader(title: 'BACKGROUND DEFENSE', icon: Icons.shield_outlined),
+                      const SizedBox(height: 12),
+
+                      // Permission card 3: Battery Optimization
+                      _PermissionCard(
+                        title: 'Unrestricted Battery',
+                        description:
+                            'Exempts Lucid from aggressive battery optimization so your timer doesn\'t freeze or drop in background.',
+                        granted: _batteryGranted,
+                        onGrant: _requestBatteryOptimization,
+                        grantLabel: 'Allow Unrestricted',
+                        icon: Icons.battery_charging_full_rounded,
+                        badge: 'Essential',
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Permission card 4: Autostart & Universal Background
+                      _PermissionCard(
+                        title: 'Autostart & Background Protection',
+                        description:
+                            'Enable Autostart and set Battery Saver to "No restrictions" (or "Unrestricted") so Lucid stays active in the background.',
+                        granted: _autostartGranted,
+                        onGrant: _openAutostart,
+                        grantLabel: 'Configure Background Run',
+                        icon: Icons.rocket_launch_rounded,
+                        badge: 'Recommended',
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Permission card 5: Notifications (Android 13+)
+                      _PermissionCard(
+                        title: 'Notification Shield',
+                        description:
+                            'Allows the persistent foreground notification that shields Lucid from being killed by the OS.',
+                        granted: _notificationGranted,
+                        onGrant: _requestNotification,
+                        grantLabel: 'Enable Notifications',
+                        icon: Icons.notifications_active_rounded,
+                        badge: 'Android 13+',
                       ),
                       const SizedBox(height: 24),
                       // Step 3: Set Warning Timer Interval
@@ -688,9 +804,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           try {
                             await _channel.invokeMethod('setWarningInterval', val);
                           } catch (_) {}
-                          if (mounted) {
-                            _showBeautifulToast(context, 'Warning timer set to $val min${val == 1 ? "" : "s"}!');
-                          }
+                          if (!mounted) return;
+                          _showBeautifulToast(context, 'Warning timer set to $val min${val == 1 ? "" : "s"}!');
                         },
                       ),
                       const SizedBox(height: 36),
@@ -706,30 +821,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 18),
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(
+                                gradient: const LinearGradient(
                                   colors: [
-                                    Color(0xFFBB86FC),
-                                    Color(0xFF7C4DFF)
+                                    Color(0xFFFFC857),
+                                    Color(0xFFEAA824),
                                   ],
                                 ),
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: bothGranted
                                     ? [
                                         BoxShadow(
-                                          color: const Color(0xFFBB86FC)
-                                              .withValues(alpha: 0.4),
+                                          color: const Color(0xFFFFC857)
+                                              .withValues(alpha: 0.45),
                                           blurRadius: 20,
                                           spreadRadius: 2,
                                         )
                                       ]
                                     : [],
                               ),
-                              child: Text(
-                                'Get Started ',
+                              child: const Text(
+                                'Get Started →',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color: Color(0xFF2F2F2F),
                                   letterSpacing: 0.3,
                                 ),
                                 textAlign: TextAlign.center,
@@ -745,7 +860,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           child: const Text(
                             'Skip for now',
                             style: TextStyle(
-                                color: Color(0xFF616161), fontSize: 13),
+                                color: Color(0xFF6B6B6B), fontSize: 13),
                           ),
                         ),
                       ],
@@ -779,41 +894,71 @@ class _Orb extends StatelessWidget {
   }
 }
 
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SectionHeader({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFFEAA824)),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: Color(0xFFEAA824),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PermissionCard extends StatelessWidget {
-  
   final String title;
   final String description;
   final bool granted;
   final VoidCallback onGrant;
   final String grantLabel;
+  final IconData icon;
+  final String? badge;
 
   const _PermissionCard({
-    
     required this.title,
     required this.description,
     required this.granted,
     required this.onGrant,
     required this.grantLabel,
+    this.icon = Icons.security_rounded,
+    this.badge,
   });
 
   @override
   Widget build(BuildContext context) {
+    final Color activeGreen = const Color(0xFF489E5F);
+    final Color primaryGold = const Color(0xFFEAA824);
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 400),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: granted
-              ? const Color(0xFF4CAF50).withValues(alpha: 0.6)
-              : const Color(0xFFBB86FC).withValues(alpha: 0.2),
+              ? activeGreen.withValues(alpha: 0.5)
+              : Theme.of(context).colorScheme.outline,
           width: 1.2,
         ),
         boxShadow: granted
             ? [
                 BoxShadow(
-                  color: const Color(0xFF4CAF50).withValues(alpha: 0.12),
+                  color: activeGreen.withValues(alpha: 0.1),
                   blurRadius: 16,
                   spreadRadius: 2,
                 )
@@ -821,53 +966,156 @@ class _PermissionCard extends StatelessWidget {
             : [],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: granted
-                  ? const Color(0xFF4CAF50).withValues(alpha: 0.15)
-                  : const Color(0xFFBB86FC).withValues(alpha: 0.1),
+                  ? activeGreen.withValues(alpha: 0.15)
+                  : const Color(0xFFFFC857).withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Center(
-              child: Icon(Icons.check, size: granted ? 24 : 22, color: granted ? const Color(0xFF4CAF50) : Theme.of(context).colorScheme.onSurface),
+              child: Icon(
+                granted ? Icons.check_circle_rounded : icon,
+                size: 24,
+                color: granted ? activeGreen : primaryGold,
+              ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color:
-                            granted ? Color(0xFF4CAF50) : Theme.of(context).colorScheme.onSurface)),
-                SizedBox(height: 4),
-                Text(description,
-                    style: TextStyle(
-                        fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), height: 1.4)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: granted
+                              ? activeGreen
+                              : Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: granted
+                              ? activeGreen.withValues(alpha: 0.15)
+                              : const Color(0xFFFFC857).withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: granted
+                                ? activeGreen.withValues(alpha: 0.3)
+                                : primaryGold.withValues(alpha: 0.35),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          badge!,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: granted ? activeGreen : primaryGold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.65),
+                    height: 1.4,
+                  ),
+                ),
                 if (!granted) ...[
                   const SizedBox(height: 12),
                   GestureDetector(
                     onTap: onGrant,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                          horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                            colors: [Color(0xFFBB86FC), Color(0xFF7C4DFF)]),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFC857), Color(0xFFEAA824)],
+                        ),
                         borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFFFC857).withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          )
+                        ],
                       ),
-                      child: Text(grantLabel,
-                          style: TextStyle(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            grantLabel,
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSurface)),
+                              color: Color(0xFF2F2F2F),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_forward_rounded, size: 13, color: Color(0xFF2F2F2F)),
+                        ],
+                      ),
                     ),
+                  ),
+                ] else if (granted) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.verified_rounded, size: 14, color: activeGreen),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Granted & Active',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: activeGreen,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: onGrant,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: activeGreen.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Settings',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: activeGreen,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
@@ -875,6 +1123,221 @@ class _PermissionCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RestrictedSettingGuide extends StatefulWidget {
+  final VoidCallback onOpenAppInfo;
+
+  const _RestrictedSettingGuide({
+    Key? key,
+    required this.onOpenAppInfo,
+  }) : super(key: key);
+
+  @override
+  State<_RestrictedSettingGuide> createState() => _RestrictedSettingGuideState();
+}
+
+class _RestrictedSettingGuideState extends State<_RestrictedSettingGuide> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const primaryGold = Color(0xFFEAA824);
+    const accentGold = Color(0xFFFFC857);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF24201A) : const Color(0xFFFFFBEF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accentGold.withValues(alpha: 0.4),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: accentGold.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.lock_open_rounded, size: 18, color: primaryGold),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Android 13+ Restricted Setting?',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: accentGold.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Help',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryGold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'If Android blocks enabling Accessibility, tap for fix.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    color: primaryGold,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(height: 1),
+                  const SizedBox(height: 10),
+                  Text(
+                    'When sideloading an APK, Android 13/14/15 may show "Restricted setting". To unlock it in 10 seconds:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildStep(
+                    context,
+                    number: '1',
+                    text: 'Tap "Open App Info" button below.',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildStep(
+                    context,
+                    number: '2',
+                    text: 'Tap the 3 vertical dots (⋮) in the top right corner.',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildStep(
+                    context,
+                    number: '3',
+                    text: 'Select "Allow restricted settings" & verify PIN/fingerprint.',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildStep(
+                    context,
+                    number: '4',
+                    text: 'Return here and tap "Enable in Settings" above!',
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: widget.onOpenAppInfo,
+                      icon: const Icon(Icons.settings_applications_rounded, size: 16),
+                      label: const Text('Open App Info (Tap 3 Dots)'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accentGold,
+                        foregroundColor: const Color(0xFF2F2F2F),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep(BuildContext context, {required String number, required String text}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          margin: const EdgeInsets.only(top: 1),
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFC857),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2F2F2F),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.85),
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -898,6 +1361,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       MethodChannel('com.yuvaan.lucid/accessibility');
 
   bool _serviceEnabled = false;
+  bool _serviceAlive = false;
+  bool _batteryGranted = false;
+  bool _usageGranted = false;
+  bool _autostartGranted = false;
+  bool _notificationGranted = true;
   int _warningMins = 15;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
@@ -941,10 +1409,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     for (var key in keys) {
       if (key.startsWith('daily_limit_')) {
         final pkg = key.substring('daily_limit_'.length);
-        final limit = prefs.getInt(key) ?? 0;
+        final limit = _safePrefsInt(prefs, key, 0);
         if (limit > 0) {
           final usageDate = prefs.getString('usage_date_$pkg');
-          final usageMs = prefs.getInt('usage_total_ms_$pkg') ?? 0;
+          final usageMs = _safePrefsInt(prefs, 'usage_total_ms_$pkg', 0);
           if (usageDate == yesterdayStr) {
              final usageMins = (usageMs / 60000).floor();
              if (usageMins <= limit) {
@@ -977,7 +1445,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   Future<void> _loadWarningInterval() async {
     final prefs = await SharedPreferences.getInstance();
-    int mins = prefs.getInt('warning_interval_mins') ?? 15;
+    int mins = _safePrefsInt(prefs, 'warning_interval_mins', 15);
     try {
       final nativeMins = await _channel.invokeMethod<int>('getWarningInterval');
       if (nativeMins != null && nativeMins > 0) mins = nativeMins;
@@ -1046,10 +1514,263 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     try {
       final isEnabled =
           await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
-      if (mounted) setState(() => _serviceEnabled = isEnabled);
+      final isAlive =
+          await _channel.invokeMethod<bool>('isServiceAlive') ?? false;
+      final batteryOk =
+          await _channel.invokeMethod<bool>('isBatteryOptimizationIgnored') ?? false;
+      final usageOk =
+          await _channel.invokeMethod<bool>('isUsageAccessEnabled') ?? false;
+      final notifOk =
+          await _channel.invokeMethod<bool>('isNotificationPermissionGranted') ?? true;
+      final prefs = await SharedPreferences.getInstance();
+      final autostartOk = prefs.getBool('autostart_granted') ?? false;
+      if (mounted) {
+        setState(() {
+          _serviceEnabled = isEnabled;
+          _serviceAlive = isAlive;
+          _batteryGranted = batteryOk;
+          _usageGranted = usageOk;
+          _autostartGranted = autostartOk;
+          _notificationGranted = notifOk;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _serviceEnabled = false);
+      if (mounted) {
+        setState(() {
+          _serviceEnabled = false;
+          _serviceAlive = false;
+        });
+      }
     }
+  }
+
+  void _showPermissionsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 30,
+                  spreadRadius: 5,
+                )
+              ],
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 18, 24, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFC857).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.shield_rounded, color: Color(0xFFEAA824), size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'System Permissions & Shield',
+                                style: GoogleFonts.dmSerifDisplay(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              Text(
+                                'Manage privileges protecting Lucid from system killers',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _SectionHeader(title: 'CORE ENGINE', icon: Icons.lock_outline_rounded),
+                          const SizedBox(height: 12),
+                          _PermissionCard(
+                            title: 'Accessibility Service',
+                            description: _serviceAlive
+                                ? 'Active & intercepting monitored apps.'
+                                : (_serviceEnabled
+                                    ? 'Enabled in Android but paused by battery cleaner. Tap to restart.'
+                                    : 'Required to intercept monitored apps and display 60s pause. On Android 13+, allow restricted settings in App Info if prompted.'),
+                            granted: _serviceAlive,
+                            onGrant: () async {
+                              await _openAccessibilitySettings();
+                              await _checkServiceStatus();
+                              setSheetState(() {});
+                            },
+                            grantLabel: (_serviceEnabled && !_serviceAlive) ? 'Restart Service' : 'Enable in Settings',
+                            icon: Icons.accessibility_new_rounded,
+                            badge: 'Required',
+                          ),
+                          if (!_serviceAlive)
+                            _RestrictedSettingGuide(
+                              onOpenAppInfo: _openAppInfo,
+                            ),
+                          const SizedBox(height: 14),
+                          _PermissionCard(
+                            title: 'Usage Access',
+                            description: 'Allows Lucid to detect foreground app state and calculate screen time.',
+                            granted: _usageGranted,
+                            onGrant: () async {
+                              try {
+                                await _channel.invokeMethod('openUsageAccess');
+                              } catch (_) {}
+                              await Future.delayed(const Duration(seconds: 1));
+                              await _checkServiceStatus();
+                              setSheetState(() {});
+                            },
+                            grantLabel: 'Grant Access',
+                            icon: Icons.insights_rounded,
+                            badge: 'Required',
+                          ),
+                          const SizedBox(height: 24),
+                          const _SectionHeader(title: 'BACKGROUND DEFENSE', icon: Icons.shield_outlined),
+                          const SizedBox(height: 12),
+                          _PermissionCard(
+                            title: 'Unrestricted Battery',
+                            description: 'Prevents Android from killing Lucid when idle or swiped from recents.',
+                            granted: _batteryGranted,
+                            onGrant: () async {
+                              try {
+                                await _channel.invokeMethod('requestIgnoreBatteryOptimization');
+                              } catch (_) {}
+                              await Future.delayed(const Duration(seconds: 1));
+                              await _checkServiceStatus();
+                              setSheetState(() {});
+                            },
+                            grantLabel: 'Allow Unrestricted',
+                            icon: Icons.battery_charging_full_rounded,
+                            badge: 'Essential',
+                          ),
+                          const SizedBox(height: 14),
+                          _PermissionCard(
+                            title: 'Autostart & Background Protection',
+                            description: 'Enable Autostart and set Battery Saver to "No restrictions" (or "Unrestricted") so Lucid stays active in the background.',
+                            granted: _autostartGranted,
+                            onGrant: () async {
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setBool('autostart_granted', true);
+                              setState(() => _autostartGranted = true);
+                              setSheetState(() => _autostartGranted = true);
+                              try {
+                                await _channel.invokeMethod('openAutostartSettings');
+                              } catch (_) {}
+                            },
+                            grantLabel: 'Configure Background Run',
+                            icon: Icons.rocket_launch_rounded,
+                            badge: 'Recommended',
+                          ),
+                          const SizedBox(height: 14),
+                          _PermissionCard(
+                            title: 'Notification Shield',
+                            description: 'Ensures the foreground service notification stays visible and elevated.',
+                            granted: _notificationGranted,
+                            onGrant: () async {
+                              try {
+                                await _channel.invokeMethod('requestNotificationPermission');
+                              } catch (_) {}
+                              await Future.delayed(const Duration(seconds: 1));
+                              await _checkServiceStatus();
+                              setSheetState(() {});
+                            },
+                            grantLabel: 'Enable Notifications',
+                            icon: Icons.notifications_active_rounded,
+                            badge: 'Android 13+',
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.preview_rounded, size: 16),
+                              label: const Text('Preview Onboarding / Permissions UI'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                side: BorderSide(color: const Color(0xFFEAA824).withValues(alpha: 0.5)),
+                                foregroundColor: const Color(0xFFEAA824),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => Scaffold(
+                                      appBar: AppBar(
+                                        title: const Text('Setup Preview', style: TextStyle(fontSize: 16)),
+                                        leading: IconButton(
+                                          icon: const Icon(Icons.arrow_back_rounded),
+                                          onPressed: () => Navigator.pop(context),
+                                        ),
+                                      ),
+                                      body: OnboardingScreen(
+                                        onDone: () => Navigator.pop(context),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _openAccessibilitySettings() async {
@@ -1059,9 +1780,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       debugPrint('Failed: ${e.message}');
     }
     if (mounted) {
-      _showBeautifulToast(context, 'Opening Accessibility Settings... Please enable Lucid!');
+      final msg = (_serviceEnabled && !_serviceAlive)
+          ? 'Please toggle Lucid OFF then ON to restart the service!'
+          : 'Opening Accessibility Settings... Please enable Lucid!';
+      _showBeautifulToast(context, msg);
     }
     Future.delayed(const Duration(seconds: 2), () => _checkServiceStatus());
+  }
+
+  Future<void> _openAppInfo() async {
+    if (mounted) {
+      _showBeautifulToast(context, 'Opening App Info... Tap the 3 dots (⋮) in top right to allow restricted settings!');
+    }
+    try {
+      await _channel.invokeMethod('openAppInfo');
+    } catch (_) {}
   }
 
   Future<bool?> _showTypingPledgeDialog(String appName) {
@@ -1174,12 +1907,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       decoration: BoxDecoration(
                         color: Theme.of(context).scaffoldBackgroundColor,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0x4DBB86FC)),
+                        border: Border.all(color: const Color(0xFFFFC857).withValues(alpha: 0.5)),
                       ),
                       child: Text(
                         '"$pledgeText"',
-                        style: TextStyle(
-                          color: Color(0xFFBB86FC),
+                        style: const TextStyle(
+                          color: Color(0xFFEAA824),
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           fontStyle: FontStyle.italic,
@@ -1190,15 +1923,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         color: Theme.of(context).scaffoldBackgroundColor,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isMatch
-                              ? const Color(0xFF4CAF50)
-                              : const Color(0xFFBB86FC),
+                              ? const Color(0xFF489E5F)
+                              : const Color(0xFFFFC857),
                           width: 1.5,
                         ),
                       ),
@@ -1267,15 +2000,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           onPressed: () => Navigator.of(context).pop(false),
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: const Color(0x33BB86FC),
+                            backgroundColor: const Color(0xFFFFC857),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: Text(
+                          child: const Text(
                             'Keep Protected',
                             style: TextStyle(
-                              color: Color(0xFFBB86FC),
+                              color: Color(0xFF2F2F2F),
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                             ),
@@ -1367,7 +2100,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                   borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFFBB86FC).withValues(alpha: 0.4),
+                                      color: const Color(0xFFFFC857).withValues(alpha: 0.35),
                                       blurRadius: 14,
                                       spreadRadius: 1,
                                     )
@@ -1394,6 +2127,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 ],
                               ),
                               const Spacer(),
+                              IconButton(
+                                icon: Icon(Icons.shield_outlined, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8)),
+                                tooltip: 'Permissions & System Shield',
+                                onPressed: () => _showPermissionsSheet(context),
+                              ),
                               IconButton(
                                 icon: Icon(Icons.menu_book_rounded, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8)),
                                 tooltip: 'Open Manual',
@@ -1422,7 +2160,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                         child: _StatusCard(
                           pulseAnim: _pulseAnim,
                           serviceEnabled: _serviceEnabled,
+                          serviceAlive: _serviceAlive,
+                          batteryGranted: _batteryGranted,
                           onActivate: _openAccessibilitySettings,
+                          onManagePermissions: () => _showPermissionsSheet(context),
                           enabledApps: enabledApps.length,
                         ),
                       ),
@@ -1442,12 +2183,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     // "" Search Bar """"""""""""""""""""""""""""""""""""""""""""""""
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: EdgeInsets.fromLTRB(24, 24, 24, 16),
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
                         child: TextField(
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search installed apps...',
-                            hintStyle: TextStyle(color: Color(0xFF616161)),
+                            hintStyle: const TextStyle(color: Color(0xFF6B6B6B)),
                             prefixIcon:
                                 Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
                             filled: true,
@@ -1458,11 +2199,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08)),
+                              borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(color: const Color(0xFFBB86FC).withValues(alpha: 0.5), width: 1.5),
+                              borderSide: const BorderSide(color: Color(0xFFFFC857), width: 1.5),
                             ),
                             contentPadding: const EdgeInsets.symmetric(vertical: 14),
                           ),
@@ -1488,21 +2229,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                                 style: GoogleFonts.dmSerifDisplay(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: const Color(0xFFBB86FC),
+                                  color: const Color(0xFFEAA824),
                                 ),
                               ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFBB86FC).withValues(alpha: 0.15),
+                                  color: const Color(0xFFFFC857).withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text('${enabledApps.length} active',
                                     style: const TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: Color(0xFFBB86FC))),
+                                        color: Color(0xFFEAA824))),
                               ),
                             ],
                           ),
@@ -1537,19 +2278,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     if (_appsLoading)
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 48),
+                          padding: const EdgeInsets.symmetric(vertical: 48),
                           child: Center(
                             child: Column(
                               children: [
-                                SizedBox(
+                                const SizedBox(
                                   width: 28,
                                   height: 28,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.5,
-                                    color: Color(0xFFBB86FC),
+                                    color: Color(0xFFFFC857),
                                   ),
                                 ),
-                                SizedBox(height: 16),
+                                const SizedBox(height: 16),
                                 Text(
                                   'Loading installed apps...',
                                   style: TextStyle(
@@ -1719,7 +2460,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFFBB86FC).withValues(alpha: 0.3),
+          color: Theme.of(context).colorScheme.outline,
           width: 1,
         ),
       ),
@@ -1732,11 +2473,11 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFBB86FC).withValues(alpha: 0.15),
+                  color: const Color(0xFFFFC857).withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.timer_outlined,
-                    color: Color(0xFFBB86FC), size: 22),
+                child: const Icon(Icons.timer_outlined,
+                    color: Color(0xFFEAA824), size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -1751,7 +2492,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                         color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       'Alert after ${widget.intervalMins} min${widget.intervalMins == 1 ? "" : "s"} in a monitored app',
                       style: TextStyle(
@@ -1764,7 +2505,7 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
               ),
             ],
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -1778,9 +2519,9 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
                   ),
                   decoration: InputDecoration(
                     hintText: 'e.g. 15',
-                    hintStyle: TextStyle(color: Color(0xFF616161)),
+                    hintStyle: const TextStyle(color: Color(0xFF6B6B6B)),
                     suffixIcon: IconButton(
-                      icon: Icon(Icons.check_circle, color: Color(0xFFBB86FC)),
+                      icon: const Icon(Icons.check_circle, color: Color(0xFFEAA824)),
                       onPressed: () => _submit(_ctrl.text),
                       tooltip: 'Save Timer Interval',
                     ),
@@ -1815,30 +2556,56 @@ class _WarningTimerCardState extends State<_WarningTimerCard> {
 class _StatusCard extends StatelessWidget {
   final Animation<double> pulseAnim;
   final bool serviceEnabled;
+  final bool serviceAlive;
+  final bool batteryGranted;
   final VoidCallback onActivate;
+  final VoidCallback? onManagePermissions;
   final int enabledApps;
 
   const _StatusCard({
     required this.pulseAnim,
     required this.serviceEnabled,
+    this.serviceAlive = true,
+    this.batteryGranted = true,
     required this.onActivate,
+    this.onManagePermissions,
     required this.enabledApps,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bool isZombie = serviceEnabled && !serviceAlive;
+    final bool isHealthy = serviceEnabled && serviceAlive;
+
+    final Color statusColor = isHealthy
+        ? const Color(0xFF489E5F)
+        : (isZombie ? const Color(0xFFFFB74D) : const Color(0xFFFF9800));
+
+    final String statusLabel = isHealthy
+        ? 'Engine Active'
+        : (isZombie ? 'Engine Sleeping / Tap to Wake' : 'Setup Required');
+
+    final String title = isHealthy
+        ? 'Lucid is guarding you.'
+        : (isZombie ? 'Service Needs Wake-Up' : 'Activate Lucid');
+
+    final String subtitle = isHealthy
+        ? 'Monitoring $enabledApps app${enabledApps != 1 ? "s" : ""}. '
+            'A 60s mindful pause runs every time you open a monitored app.'
+        : (isZombie
+            ? 'Android battery optimization has paused the Lucid engine. Tap below to reactivate in Settings.'
+            : 'Enable the Accessibility Service to protect target apps. (On Android 13+, allow restricted settings in App Info if prompted).');
+
+    final String buttonLabel = isZombie
+        ? 'Reactivate Service ⚡'
+        : 'Enable Accessibility Service →';
+
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Theme.of(context).colorScheme.surface, Theme.of(context).scaffoldBackgroundColor],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: serviceEnabled
-              ? const Color(0xFF4CAF50).withValues(alpha: 0.4)
-              : const Color(0xFFBB86FC).withValues(alpha: 0.3),
+          color: Theme.of(context).colorScheme.outline,
           width: 1,
         ),
       ),
@@ -1852,21 +2619,16 @@ class _StatusCard extends StatelessWidget {
                 AnimatedBuilder(
                   animation: pulseAnim,
                   builder: (_, __) => Transform.scale(
-                    scale: serviceEnabled ? 1.0 : pulseAnim.value,
+                    scale: isHealthy ? 1.0 : pulseAnim.value,
                     child: Container(
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: serviceEnabled
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFFFF9800),
+                        color: statusColor,
                         boxShadow: [
                           BoxShadow(
-                            color: (serviceEnabled
-                                    ? const Color(0xFF4CAF50)
-                                    : const Color(0xFFFF9800))
-                                .withValues(alpha: 0.6),
+                            color: statusColor.withValues(alpha: 0.6),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -1877,21 +2639,46 @@ class _StatusCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  serviceEnabled ? 'Engine Active' : 'Setup Required',
+                  statusLabel,
                   style: TextStyle(
                     fontSize: 13,
-                    color: serviceEnabled
-                        ? const Color(0xFF4CAF50)
-                        : const Color(0xFFFF9800),
+                    color: statusColor,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.5,
                   ),
                 ),
+                const Spacer(),
+                if (onManagePermissions != null)
+                  GestureDetector(
+                    onTap: onManagePermissions,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFC857).withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.shield_outlined, size: 13, color: Color(0xFFEAA824)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Permissions',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFEAA824),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
             Text(
-              serviceEnabled ? 'Lucid is guarding you.' : 'Activate Lucid',
+              title,
               style: GoogleFonts.dmSerifDisplay(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -1900,39 +2687,75 @@ class _StatusCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              serviceEnabled
-                  ? 'Monitoring $enabledApps app${enabledApps != 1 ? "s" : ""}. '
-                      'A 60s mindful pause runs every time you open a monitored app.'
-                  : 'Enable the Accessibility Service so Lucid can intercept target apps.',
+              subtitle,
               style: TextStyle(
                 fontSize: 14,
                 color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                 height: 1.5,
               ),
             ),
-            if (!serviceEnabled) ...[
+            if (isHealthy && !batteryGranted) ...[
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: onManagePermissions,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB74D).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFFFB74D).withValues(alpha: 0.35),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFFFFB74D)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Battery optimization active • Tap to exempt',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFFFB74D),
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFFFFB74D)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (!isHealthy) ...[
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: onActivate,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFBB86FC),
-                    foregroundColor: Colors.black,
-                    padding: EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: isZombie
+                        ? const Color(0xFFFFB74D)
+                        : const Color(0xFFFFC857),
+                    foregroundColor: const Color(0xFF2F2F2F),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
                   child: Text(
-                    'Enable Accessibility Service ',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    buttonLabel,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Text(
-                'Settings  Accessibility  Downloaded Apps  Lucid',
+                isZombie
+                    ? 'Tip: In Accessibility Settings, toggle Lucid OFF then ON'
+                    : 'Settings → Accessibility → Downloaded Apps → Lucid',
                 style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -1987,10 +2810,10 @@ class _AppTileState extends State<_AppTile> {
   Future<void> _loadTimer() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _customTimer = prefs.getInt('app_timer_${widget.package}') ?? 0;
-      _dailyLimit = prefs.getInt('daily_limit_${widget.package}') ?? 0;
+      _customTimer = _safePrefsInt(prefs, 'app_timer_${widget.package}', 0);
+      _dailyLimit = _safePrefsInt(prefs, 'daily_limit_${widget.package}', 0);
       _savedDailyLimit = _dailyLimit;
-      _usageMs = prefs.getInt('usage_total_ms_${widget.package}') ?? 0;
+      _usageMs = _safePrefsInt(prefs, 'usage_total_ms_${widget.package}', 0);
       _usageDate = prefs.getString('usage_date_${widget.package}') ?? "";
     });
   }
@@ -2049,20 +2872,20 @@ class _AppTileState extends State<_AppTile> {
   }
 
   Color _colorFromName(String name) {
-    if (name.isEmpty) return const Color(0xFFBB86FC);
+    if (name.isEmpty) return const Color(0xFFFFC857);
     final firstChar = name.trim().toUpperCase();
-    if (firstChar.isEmpty) return const Color(0xFFBB86FC);
+    if (firstChar.isEmpty) return const Color(0xFFFFC857);
     final code = firstChar.codeUnitAt(0);
     if (code >= 65 && code <= 90) {
       final index = code - 65;
       final hue = (index * (360.0 / 26.0)) % 360.0;
-      return HSVColor.fromAHSV(1.0, hue, 0.75, 1.0).toColor();
+      return HSVColor.fromAHSV(1.0, hue, 0.65, 0.92).toColor();
     } else if (code >= 48 && code <= 57) {
       final index = code - 48;
       final hue = (180.0 + index * 15.0) % 360.0;
-      return HSVColor.fromAHSV(1.0, hue, 0.75, 1.0).toColor();
+      return HSVColor.fromAHSV(1.0, hue, 0.65, 0.92).toColor();
     }
-    return const Color(0xFFBB86FC);
+    return const Color(0xFFFFC857);
   }
 
   @override
@@ -2071,7 +2894,7 @@ class _AppTileState extends State<_AppTile> {
     final bgColor = _colorFromName(widget.name);
 
     return TweenAnimationBuilder<double>(
-      key: ValueKey('\${widget.package}_\${widget.enabled}'),
+      key: ValueKey('${widget.package}_${widget.enabled}'),
       tween: Tween(begin: 0.93, end: 1.0),
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeOutBack,
@@ -2083,7 +2906,7 @@ class _AppTileState extends State<_AppTile> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: widget.enabled
-              ? Color(0xFFBB86FC).withValues(alpha: 0.4)
+              ? const Color(0xFFFFC857).withValues(alpha: 0.4)
               : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
           width: 1,
         ),
@@ -2119,7 +2942,7 @@ class _AppTileState extends State<_AppTile> {
                     fontSize: 15)),
             trailing: Switch(
               value: widget.enabled,
-              activeThumbColor: const Color(0xFFBB86FC),
+              activeThumbColor: const Color(0xFFFFC857),
               onChanged: widget.onChanged,
             ),
           ),
@@ -2133,7 +2956,7 @@ class _AppTileState extends State<_AppTile> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).scaffoldBackgroundColor,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBB86FC).withValues(alpha: 0.2)),
+                  border: Border.all(color: const Color(0xFFFFC857).withValues(alpha: 0.2)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2147,17 +2970,17 @@ class _AppTileState extends State<_AppTile> {
                         ),
                         Text(
                           _customTimer == 0 ? 'Global Default' : '$_customTimer mins',
-                          style: TextStyle(color: Color(0xFFBB86FC), fontSize: 13, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: const Color(0xFFEAA824), fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
                     SizedBox(height: 8),
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: Color(0xFFBB86FC),
+                        activeTrackColor: const Color(0xFFFFC857),
                         inactiveTrackColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
                         thumbColor: Colors.white,
-                        overlayColor: const Color(0xFFBB86FC).withValues(alpha: 0.2),
+                        overlayColor: const Color(0xFFFFC857).withValues(alpha: 0.2),
                         trackHeight: 4,
                       ),
                       child: Slider(
@@ -2353,16 +3176,16 @@ class _AnimatedToastState extends State<_AnimatedToast> with SingleTickerProvide
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: Theme.of(context).brightness == Brightness.dark
-                    ? const [Color(0xFF2A1040), Color(0xFF160824)]
-                    : const [Color(0xFFF3E5F5), Color(0xFFFFFFFF)],
+                    ? const [Color(0xFF2A2518), Color(0xFF1B1A18)]
+                    : const [Color(0xFFFFFDF9), Color(0xFFFAF9F6)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFBB86FC).withValues(alpha: 0.5), width: 1.5),
+              border: Border.all(color: const Color(0xFFFFC857).withValues(alpha: 0.5), width: 1.5),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFBB86FC).withValues(alpha: 0.3),
+                  color: const Color(0xFFFFC857).withValues(alpha: 0.18),
                   blurRadius: 20,
                   spreadRadius: 2,
                   offset: const Offset(0, 8),
@@ -2417,9 +3240,9 @@ class _ThemeToggle extends StatelessWidget {
             height: 32,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: isDark ? const Color(0xFF161622) : const Color(0xFFE0E0E0),
+              color: isDark ? const Color(0xFF24221F) : const Color(0xFFE8E5DE),
               border: Border.all(
-                color: isDark ? const Color(0xFFBB86FC).withValues(alpha: 0.5) : Colors.grey.shade400,
+                color: isDark ? const Color(0xFFFFC857).withValues(alpha: 0.5) : const Color(0xFFD9D6D0),
               ),
             ),
             child: Stack(
@@ -2438,8 +3261,8 @@ class _ThemeToggle extends StatelessWidget {
                       child: ScaleTransition(scale: anim, child: child),
                     ),
                     child: isDark 
-                        ? const Icon(Icons.nightlight_round, key: ValueKey('moon'), size: 22, color: Color(0xFFBB86FC))
-                        : const Icon(Icons.wb_sunny_rounded, key: ValueKey('sun'), size: 22, color: Colors.orange),
+                        ? const Icon(Icons.nightlight_round, key: ValueKey('moon'), size: 22, color: Color(0xFFFFC857))
+                        : const Icon(Icons.wb_sunny_rounded, key: ValueKey('sun'), size: 22, color: Color(0xFFEAA824)),
                   ),
                 ),
               ],
@@ -2521,7 +3344,7 @@ class _FrictionDialogState extends State<_FrictionDialog> {
               style: TextStyle(
                 fontSize: 48,
                 fontWeight: FontWeight.bold,
-                color: const Color(0xFFBB86FC),
+                color: const Color(0xFFFFC857),
               ),
             ),
         ],
@@ -2534,9 +3357,9 @@ class _FrictionDialogState extends State<_FrictionDialog> {
         ElevatedButton(
           onPressed: canConfirm ? () => Navigator.of(context).pop(true) : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFBB86FC),
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: const Color(0xFFBB86FC).withValues(alpha: 0.2),
+            backgroundColor: const Color(0xFFFFC857),
+            foregroundColor: const Color(0xFF2F2F2F),
+            disabledBackgroundColor: const Color(0xFFFFC857).withValues(alpha: 0.2),
           ),
           child: Text('Confirm'),
         ),
